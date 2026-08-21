@@ -57,7 +57,7 @@ public partial class MainWindow : Window
             if (dialog.ShowDialog() != true)
                 return;
 
-            if (dialog.ClearKeys)
+            if (dialog.UnloadKeys)
             {
                 var ok = await _session.UnloadAllAsync().ConfigureAwait(true);
                 if (!ok)

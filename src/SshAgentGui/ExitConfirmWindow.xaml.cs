@@ -4,7 +4,7 @@ namespace SshAgentGui;
 
 public partial class ExitConfirmWindow : Window
 {
-    public bool ClearKeys { get; private set; }
+    public bool UnloadKeys { get; private set; }
 
     public ExitConfirmWindow()
     {
@@ -13,15 +13,15 @@ public partial class ExitConfirmWindow : Window
 
     private void OnSourceInitialized(object? sender, EventArgs e) => TitleBarDarkMode.Apply(this);
 
-    private void OnClearClick(object sender, RoutedEventArgs e)
+    private void OnUnloadClick(object sender, RoutedEventArgs e)
     {
-        ClearKeys = true;
+        UnloadKeys = true;
         DialogResult = true;
     }
 
     private void OnLeaveClick(object sender, RoutedEventArgs e)
     {
-        ClearKeys = false;
+        UnloadKeys = false;
         DialogResult = true;
     }
 }

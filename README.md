@@ -2,7 +2,7 @@
 
 Windows GUI for the OpenSSH Authentication Agent. Create keys, load them, copy the public half, unload them. It talks to the Windows OpenSSH tools under `C:\Windows\System32\OpenSSH\` — not the ones Git puts on your PATH.
 
-Minimize sends the window to the tray. Close and tray Exit quit. If anything is still loaded you’ll get a choice: leave the keys, clear them, or cancel. A passphrase key opens a dialog, not a console.
+Minimize sends the window to the tray. Close and tray Exit quit. If anything is still loaded you’ll get a choice: leave the keys, unload them, or cancel. A passphrase key opens a dialog, not a console.
 
 One instance. A second launch just brings the existing window forward.
 

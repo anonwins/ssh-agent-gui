@@ -32,10 +32,10 @@
                                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </StackPanel>
             </Button>
-            <Button Grid.Column="1" Style="{StaticResource DangerButton}" Click="OnClearClick" Margin="0,0,8,0" HorizontalAlignment="Stretch">
+            <Button Grid.Column="1" Style="{StaticResource DangerButton}" Click="OnUnloadClick" Margin="0,0,8,0" HorizontalAlignment="Stretch">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                     <TextBlock Style="{StaticResource Glyph}" Text="&#xE74D;"/>
-                    <TextBlock Text="Clear keys and exit" Margin="8,0,0,0" VerticalAlignment="Center"
+                    <TextBlock Text="Unload keys and exit" Margin="8,0,0,0" VerticalAlignment="Center"
                                Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                 </StackPanel>
             </Button>
