@@ -1,0 +1,21 @@
+<Window x:Class="SshAgentGui.ExitConfirmWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Exit SSH Agent"
+        Width="420"
+        Height="240"
+        MinWidth="400"
+        MinHeight="220"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+    <DockPanel Margin="16">
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,0,0,16"
+                   Text="The window will close and the tray icon will exit. What should happen to keys in the agent?"/>
+        <StackPanel VerticalAlignment="Bottom">
+            <Button Content="Clear keys and exit" Click="OnClearClick" Margin="0,0,0,8" HorizontalAlignment="Stretch"/>
+            <Button Content="Leave keys loaded and exit" Click="OnLeaveClick" Margin="0,0,0,8" HorizontalAlignment="Stretch"/>
+            <Button Content="Cancel" IsCancel="True" HorizontalAlignment="Stretch"/>
+        </StackPanel>
+    </DockPanel>
+</Window>

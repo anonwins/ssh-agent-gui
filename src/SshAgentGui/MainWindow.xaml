@@ -1,0 +1,57 @@
+﻿<Window x:Class="SshAgentGui.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SSH Agent"
+        Height="460"
+        Width="920"
+        MinHeight="320"
+        MinWidth="720"
+        StateChanged="OnStateChanged"
+        Closing="OnClosing">
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="E_xit" Click="OnExitClick"/>
+            </MenuItem>
+        </Menu>
+        <StatusBar DockPanel.Dock="Bottom">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusText}"/>
+            </StatusBarItem>
+        </StatusBar>
+        <ToolBarTray DockPanel.Dock="Top">
+            <ToolBar>
+                <Button Content="Create key…" Click="OnCreateKeyClick" IsEnabled="{Binding IsIdle}"/>
+                <Button Content="Add key…" Click="OnAddKeyClick" IsEnabled="{Binding IsIdle}"/>
+                <Separator/>
+                <Button Content="Unload all" Click="OnUnloadAllClick" IsEnabled="{Binding IsIdle}"/>
+                <Button Content="Refresh" Click="OnRefreshClick" IsEnabled="{Binding IsIdle}"/>
+            </ToolBar>
+        </ToolBarTray>
+        <ListView ItemsSource="{Binding Identities}"
+                  Margin="8"
+                  IsEnabled="{Binding IsIdle}">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Comment" Width="200" DisplayMemberBinding="{Binding Comment}"/>
+                    <GridViewColumn Header="Type" Width="90" DisplayMemberBinding="{Binding KeyType}"/>
+                    <GridViewColumn Header="Fingerprint" Width="360" DisplayMemberBinding="{Binding Fingerprint}"/>
+                    <GridViewColumn Header="" Width="90">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="{Binding ToggleLabel}" Click="OnToggleClick" Padding="8,2" MinWidth="72"/>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                    <GridViewColumn Header="" Width="80">
+                        <GridViewColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Unload" Click="OnUnloadClick" Padding="8,2" MinWidth="64"/>
+                            </DataTemplate>
+                        </GridViewColumn.CellTemplate>
+                    </GridViewColumn>
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</Window>
