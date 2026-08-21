@@ -1,12 +1,16 @@
 # SSH Agent GUI
 
-A small Windows tray app for the OpenSSH Authentication Agent. List, create, load, and unload keys without using a terminal.
+Windows GUI for the OpenSSH Authentication Agent. Create keys, load them, copy the public half, unload them. It talks to the Windows OpenSSH tools under `C:\Windows\System32\OpenSSH\` — not the ones Git puts on your PATH.
+
+Minimize sends the window to the tray. Close and tray Exit quit. If anything is still loaded you’ll get a choice: leave the keys, clear them, or cancel. A passphrase key opens a dialog, not a console.
+
+One instance. A second launch just brings the existing window forward.
 
 ## Requirements
 
-- Windows 10/11 with the OpenSSH client (`C:\Windows\System32\OpenSSH\`)
-- The **OpenSSH Authentication Agent** (`ssh-agent`) Windows service
-- .NET 9 (to build)
+- Windows 10/11, OpenSSH Client installed
+- The `ssh-agent` service running
+- .NET 9 to build
 
 ## Build
 
@@ -14,11 +18,6 @@ A small Windows tray app for the OpenSSH Authentication Agent. List, create, loa
 dotnet build SshAgentGui.sln -c Release
 ```
 
-Run `src\SshAgentGui\bin\Release\net9.0-windows\SshAgentGui.exe`.
+Then run `src\SshAgentGui\bin\Release\net9.0-windows\SshAgentGui.exe`.
 
-## Behavior
-
-- Minimize hides the window to the system tray. Close (X) and tray **Exit** quit the app.
-- If keys are loaded, you can **Exit only**, **Clear keys and exit**, or **Cancel**. With no keys loaded, exit is immediate.
-- **Unload** removes a key from the agent and from the list.
-- Uses Windows `ssh-add` / `ssh-keygen` only (not Git’s copies).
+Settings live in `%AppData%\SshAgentGui\` (`keys.json` for key paths, `ui.json` for window size/position and the last folders you picked).

@@ -11,6 +11,12 @@ public partial class App : System.Windows.Application
 
     private void App_OnStartup(object sender, StartupEventArgs e)
     {
+        if (AskPassMode.IsLaunch(e.Args))
+        {
+            Shutdown(AskPassMode.Run(e.Args));
+            return;
+        }
+
         System.Windows.Forms.Application.EnableVisualStyles();
         System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
 

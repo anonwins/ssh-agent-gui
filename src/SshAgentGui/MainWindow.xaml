@@ -119,7 +119,7 @@
                                         <TextBlock Text="{Binding DisplayComment}" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                     </DockPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <StackPanel Grid.Column="1" Grid.RowSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button Style="{StaticResource RowButton}" Click="OnCopyClick"
                                                 ToolTip="Copy public key" Margin="0,0,6,0">
                                             <StackPanel Orientation="Horizontal">
@@ -136,7 +136,7 @@
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
-                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2"
+                                    <TextBlock Grid.Row="1"
                                                Text="{Binding Fingerprint}"
                                                ToolTip="{Binding Fingerprint}"
                                                Foreground="{StaticResource MutedBrush}"

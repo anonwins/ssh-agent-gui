@@ -103,7 +103,18 @@ internal sealed class AgentSession : INotifyPropertyChanged
         await WithBusy(async () =>
         {
             var before = LoadedFingerprints();
-            var result = await _client.AddAsync(path, interactive: true).ConfigureAwait(true);
+            string? passphrase = null;
+            if (PrivateKeyFile.LooksEncrypted(path))
+            {
+                passphrase = PromptPassphrase(path);
+                if (passphrase is null)
+                {
+                    StatusText = "Load cancelled.";
+                    return false;
+                }
+            }
+
+            var result = await _client.AddAsync(path, passphrase).ConfigureAwait(true);
             var listed = await RefreshCoreAsync().ConfigureAwait(true);
             BindNewLoaded(before, path);
             SetOutcome(result.Ok, result.Message, listed, "Loaded " + Path.GetFileName(path));
@@ -188,10 +199,10 @@ internal sealed class AgentSession : INotifyPropertyChanged
             string? addFailed = null;
             if (request.LoadIntoAgent)
             {
-                var interactive = !string.IsNullOrEmpty(request.Passphrase);
-                var add = await _client.AddAsync(request.Path, interactive).ConfigureAwait(true);
-                if (!add.Ok && !interactive)
-                    add = await _client.AddAsync(request.Path, interactive: true).ConfigureAwait(true);
+                var add = await _client.AddAsync(
+                        request.Path,
+                        string.IsNullOrEmpty(request.Passphrase) ? null : request.Passphrase)
+                    .ConfigureAwait(true);
                 if (!add.Ok)
                     addFailed = "Key created, but it was not loaded into the agent. " + add.Message;
             }
@@ -422,6 +433,19 @@ internal sealed class AgentSession : INotifyPropertyChanged
             identity.Path = path;
             _store.Upsert(identity, path);
         }
+    }
+
+    private static string? PromptPassphrase(string keyPath)
+    {
+        var owner = System.Windows.Application.Current?.MainWindow;
+        var dialog = new PassphraseWindow("Enter the passphrase for " + Path.GetFileName(keyPath) + ".");
+        if (owner is { IsVisible: true })
+        {
+            dialog.Owner = owner;
+            dialog.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
+        }
+
+        return dialog.ShowDialog() == true ? dialog.Passphrase : null;
     }
 
     private static bool PathsEqual(string a, string b) =>

@@ -22,28 +22,12 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
         return ClassifyPublic(output);
     }
 
-    public async Task<SshAgentResult> AddAsync(string keyPath, bool interactive, CancellationToken cancellationToken = default)
+    public async Task<SshAgentResult> AddAsync(string keyPath, string? passphrase = null, CancellationToken cancellationToken = default)
     {
         if (OpenSshProcess.FindExe("ssh-add.exe") is null)
             return SshAgentResult.Missing(MissingMessage());
 
-        if (interactive)
-        {
-            var code = await OpenSshProcess.RunAddConsoleAsync(keyPath, cancellationToken).ConfigureAwait(false);
-            if (code == 0)
-                return SshAgentResult.Success();
-            if (code == -1)
-                return SshAgentResult.Missing(MissingMessage());
-            return SshAgentResult.Fail("ssh-add did not add the key (closed or failed).");
-        }
-
-        var workDir = Path.GetDirectoryName(keyPath);
-        var output = await OpenSshProcess.RunHiddenAsync(
-                "ssh-add.exe",
-                [keyPath],
-                workDir,
-                cancellationToken)
-            .ConfigureAwait(false);
+        var output = await OpenSshProcess.RunAddAsync(keyPath, passphrase, cancellationToken).ConfigureAwait(false);
         return ClassifyMutation(output, successIfEmpty: false);
     }
 

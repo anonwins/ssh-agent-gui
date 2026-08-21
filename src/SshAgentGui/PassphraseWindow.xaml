@@ -1,0 +1,41 @@
+<Window x:Class="SshAgentGui.PassphraseWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Passphrase"
+        Width="420"
+        MinWidth="400"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="{StaticResource BgBrush}"
+        Foreground="{StaticResource TextBrush}"
+        FontFamily="Segoe UI"
+        UseLayoutRounding="True"
+        SourceInitialized="OnSourceInitialized">
+    <DockPanel Margin="20" Background="{StaticResource BgBrush}">
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock Text="Unlock key" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
+            <TextBlock x:Name="PromptText" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                       Margin="0,0,0,14"/>
+            <PasswordBox x:Name="PassBox"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button IsCancel="True" Margin="0,0,8,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE711;"/>
+                    <TextBlock Text="Cancel" Margin="8,0,0,0" VerticalAlignment="Center"
+                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </StackPanel>
+            </Button>
+            <Button Style="{StaticResource PrimaryButton}" IsDefault="True" Click="OnUnlockClick">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE192;"/>
+                    <TextBlock Text="Unlock" Margin="8,0,0,0" VerticalAlignment="Center"
+                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </DockPanel>
+</Window>
