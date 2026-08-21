@@ -17,6 +17,8 @@ public partial class CreateKeyWindow : Window
         PathBox.TextChanged += (_, _) => _pathTouched = true;
     }
 
+    private void OnSourceInitialized(object? sender, EventArgs e) => TitleBarDarkMode.Apply(this);
+
     private void OnTypeChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!IsLoaded)
@@ -83,6 +85,7 @@ public partial class CreateKeyWindow : Window
     private static string DefaultPathForType(bool ed25519)
     {
         var name = ed25519 ? "id_ed25519" : "id_rsa";
-        return Path.Combine(KeyFileDialog.DefaultSshDirectory, name);
+        var dir = UiSettings.Current.ExistingSaveDir() ?? KeyFileDialog.DefaultSshDirectory;
+        return Path.Combine(dir, name);
     }
 }

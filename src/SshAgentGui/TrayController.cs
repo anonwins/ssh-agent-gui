@@ -20,7 +20,10 @@ internal sealed class TrayController : IDisposable
         _exit = exit;
 
         _countItem = new ToolStripMenuItem(_session.LoadedCountText) { Enabled = false };
-        var menu = new ContextMenuStrip();
+        var menu = new ContextMenuStrip
+        {
+            Renderer = new DarkMenuRenderer(),
+        };
         menu.Items.Add(_countItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Open", null, (_, _) => _show()));
@@ -57,7 +60,7 @@ internal sealed class TrayController : IDisposable
 
     private string TooltipText()
     {
-        var text = "SSH Agent — " + _session.LoadedCountText;
+        var text = "SSH Agent GUI — " + _session.LoadedCountText;
         return text.Length <= 63 ? text : text[..63];
     }
 

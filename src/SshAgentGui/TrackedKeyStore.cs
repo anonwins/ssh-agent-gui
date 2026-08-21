@@ -28,6 +28,7 @@ internal sealed class TrackedKeyStore
 
     private readonly string _filePath;
     private Dictionary<string, TrackedKeyRecord> _items = new(StringComparer.Ordinal);
+    private bool _dirty;
 
     public TrackedKeyStore(string? filePath = null)
     {
@@ -64,29 +65,43 @@ internal sealed class TrackedKeyStore
     public TrackedKeyRecord? TryGet(string fingerprint) =>
         _items.TryGetValue(fingerprint, out var record) ? record : null;
 
-    public void Upsert(SshIdentity identity, string path)
+    public void Upsert(SshIdentity identity, string path) =>
+        Remember(identity.Fingerprint, path, identity.Comment, identity.KeyType, identity.Bits);
+
+    public void Upsert(string fingerprint, string path, string comment, string type, int bits) =>
+        Remember(fingerprint, path, comment, type, bits);
+
+    public void Remember(string fingerprint, string? path, string comment, string type, int bits, bool persist = true)
     {
-        _items[identity.Fingerprint] = new TrackedKeyRecord
+        _items.TryGetValue(fingerprint, out var existing);
+        var next = new TrackedKeyRecord
         {
-            Path = path,
-            Comment = identity.Comment,
-            Type = identity.KeyType,
-            Bits = identity.Bits,
+            Path = FirstNonEmpty(path, existing?.Path),
+            Comment = FirstNonEmpty(comment, existing?.Comment),
+            Type = FirstNonEmpty(type, existing?.Type),
+            Bits = bits != 0 ? bits : existing?.Bits ?? 0,
         };
-        Save();
+        if (existing is not null
+            && existing.Path == next.Path
+            && existing.Comment == next.Comment
+            && existing.Type == next.Type
+            && existing.Bits == next.Bits)
+            return;
+
+        _items[fingerprint] = next;
+        _dirty = true;
+        if (persist)
+            Save();
     }
 
-    public void Upsert(string fingerprint, string path, string comment, string type, int bits)
+    public void Persist()
     {
-        _items[fingerprint] = new TrackedKeyRecord
-        {
-            Path = path,
-            Comment = comment,
-            Type = type,
-            Bits = bits,
-        };
-        Save();
+        if (_dirty)
+            Save();
     }
+
+    private static string FirstNonEmpty(string? value, string? fallback) =>
+        !string.IsNullOrWhiteSpace(value) ? value : fallback ?? "";
 
     public void Remove(string fingerprint)
     {
@@ -94,16 +109,14 @@ internal sealed class TrackedKeyStore
             Save();
     }
 
-    public void DropMissingFilesNotInAgent(IReadOnlySet<string> loadedFingerprints)
+    public void KeepOnly(IReadOnlySet<string> fingerprints)
     {
-        var stale = _items
-            .Where(pair => !loadedFingerprints.Contains(pair.Key) && !File.Exists(pair.Value.Path))
-            .Select(pair => pair.Key)
-            .ToList();
-        if (stale.Count == 0)
+        var extra = _items.Keys.Where(key => !fingerprints.Contains(key)).ToList();
+        if (extra.Count == 0)
             return;
-        foreach (var key in stale)
+        foreach (var key in extra)
             _items.Remove(key);
+        _dirty = true;
         Save();
     }
 
@@ -117,5 +130,6 @@ internal sealed class TrackedKeyStore
         File.WriteAllText(tmp, JsonSerializer.Serialize(_items, JsonOptions));
         File.Copy(tmp, _filePath, overwrite: true);
         File.Delete(tmp);
+        _dirty = false;
     }
 }

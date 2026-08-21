@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application
         }
 
         _single = single;
+        UiSettings.Load();
         _session = new AgentSession();
         _main = new MainWindow(_session);
         _tray = new TrayController(_session, () => _main.RestoreFromTray(), () => _ = _main.RequestExitAsync());

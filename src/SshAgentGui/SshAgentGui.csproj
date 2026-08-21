@@ -9,8 +9,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Product>SSH Agent</Product>
-    <AssemblyTitle>SSH Agent</AssemblyTitle>
+    <Product>SSH Agent GUI</Product>
+    <AssemblyTitle>SSH Agent GUI</AssemblyTitle>
     <RootNamespace>SshAgentGui</RootNamespace>
     <AssemblyName>SshAgentGui</AssemblyName>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>

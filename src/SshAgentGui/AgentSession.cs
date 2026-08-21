@@ -13,7 +13,6 @@ internal sealed class AgentSession : INotifyPropertyChanged
     private bool _isBusy;
     private string _statusText = "Starting…";
     private int _loadedCount;
-    private int _disabledCount;
 
     public AgentSession(ISshAgentClient? client = null, WindowsSshKeygen? keygen = null, TrackedKeyStore? store = null)
     {
@@ -65,20 +64,12 @@ internal sealed class AgentSession : INotifyPropertyChanged
         }
     }
 
-    public int DisabledCount
-    {
-        get => _disabledCount;
-        private set
-        {
-            if (_disabledCount == value)
-                return;
-            _disabledCount = value;
-            OnPropertyChanged();
-        }
-    }
-
     public string LoadedCountText =>
         LoadedCount == 1 ? "1 key loaded" : $"{LoadedCount} keys loaded";
+
+    public bool HasKeys => Identities.Count > 0;
+
+    public bool IsEmpty => Identities.Count == 0;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -101,7 +92,8 @@ internal sealed class AgentSession : INotifyPropertyChanged
     {
         await WithBusy(async () =>
         {
-            await RefreshCoreAsync().ConfigureAwait(true);
+            if (await RefreshCoreAsync().ConfigureAwait(true))
+                StatusText = RefreshedStatus();
             return true;
         }).ConfigureAwait(true);
     }
@@ -112,67 +104,28 @@ internal sealed class AgentSession : INotifyPropertyChanged
         {
             var before = LoadedFingerprints();
             var result = await _client.AddAsync(path, interactive: true).ConfigureAwait(true);
-            await RefreshCoreAsync().ConfigureAwait(true);
+            var listed = await RefreshCoreAsync().ConfigureAwait(true);
             BindNewLoaded(before, path);
-            if (!result.Ok)
-                StatusText = result.Message;
+            SetOutcome(result.Ok, result.Message, listed, "Loaded " + Path.GetFileName(path));
             return result.Ok;
         }).ConfigureAwait(true);
     }
 
-    public async Task<bool> EnableAsync(SshIdentity identity, string path)
+    public async Task<bool> UnloadAsync(SshIdentity identity)
     {
         return await WithBusy(async () =>
         {
-            var before = LoadedFingerprints();
-            var result = await _client.AddAsync(path, interactive: true).ConfigureAwait(true);
-            if (result.Ok)
-                _store.Upsert(identity.Fingerprint, path, identity.Comment, identity.KeyType, identity.Bits);
-            await RefreshCoreAsync().ConfigureAwait(true);
-            BindNewLoaded(before, path);
-            if (!result.Ok)
-                StatusText = result.Message;
-            return result.Ok;
-        }).ConfigureAwait(true);
-    }
-
-    public async Task<bool> DisableAsync(SshIdentity identity, string path)
-    {
-        return await WithBusy(async () =>
-        {
-            identity.Path = path;
-            _store.Upsert(identity, path);
-            var result = await _client.RemoveAsync(path).ConfigureAwait(true);
-            await RefreshCoreAsync().ConfigureAwait(true);
-            if (!result.Ok)
-                StatusText = result.Message;
-            return result.Ok;
-        }).ConfigureAwait(true);
-    }
-
-    public async Task<bool> UnloadAsync(SshIdentity identity, string? path)
-    {
-        return await WithBusy(async () =>
-        {
-            if (identity.IsLoaded)
+            var removed = await RemoveLoadedAsync(identity).ConfigureAwait(true);
+            if (!removed.Ok)
             {
-                if (string.IsNullOrWhiteSpace(path))
-                {
-                    StatusText = "Select the key file to unload.";
-                    return false;
-                }
-
-                var result = await _client.RemoveAsync(path).ConfigureAwait(true);
-                if (!result.Ok)
-                {
-                    StatusText = result.Message;
-                    await RefreshCoreAsync().ConfigureAwait(true);
-                    return false;
-                }
+                StatusText = removed.Message;
+                await RefreshCoreAsync().ConfigureAwait(true);
+                return false;
             }
 
             _store.Remove(identity.Fingerprint);
-            await RefreshCoreAsync().ConfigureAwait(true);
+            if (await RefreshCoreAsync().ConfigureAwait(true))
+                StatusText = "Unloaded " + identity.DisplayComment;
             return true;
         }).ConfigureAwait(true);
     }
@@ -182,10 +135,25 @@ internal sealed class AgentSession : INotifyPropertyChanged
         return await WithBusy(async () =>
         {
             var result = await _client.RemoveAllAsync().ConfigureAwait(true);
-            await RefreshCoreAsync().ConfigureAwait(true);
-            if (!result.Ok)
-                StatusText = result.Message;
+            var listed = await RefreshCoreAsync().ConfigureAwait(true);
+            SetOutcome(result.Ok, result.Message, listed, "Unloaded all keys");
             return result.Ok;
+        }).ConfigureAwait(true);
+    }
+
+    public async Task<string?> GetPublicKeyAsync(SshIdentity identity)
+    {
+        return await WithBusy(async () =>
+        {
+            var line = await FindPublicKeyLineAsync(identity).ConfigureAwait(true);
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                StatusText = "No public key file, and the key is not in the agent.";
+                return null;
+            }
+
+            StatusText = "Public key copied";
+            return line;
         }).ConfigureAwait(true);
     }
 
@@ -228,11 +196,15 @@ internal sealed class AgentSession : INotifyPropertyChanged
                     addFailed = "Key created, but it was not loaded into the agent. " + add.Message;
             }
 
-            await RefreshCoreAsync().ConfigureAwait(true);
+            var listed = await RefreshCoreAsync().ConfigureAwait(true);
             BindNewLoaded(before, request.Path);
             BindPath(request.Path);
             if (addFailed is not null)
                 StatusText = addFailed;
+            else if (listed)
+                StatusText = "Created " + Path.GetFileName(request.Path);
+            if (created.Ok)
+                UiSettings.Current.RememberSave(request.Path);
             return created.Ok;
         }).ConfigureAwait(true);
     }
@@ -250,7 +222,7 @@ internal sealed class AgentSession : INotifyPropertyChanged
         }
     }
 
-    private async Task RefreshCoreAsync()
+    private async Task<bool> RefreshCoreAsync()
     {
         var result = await _client.ListAsync().ConfigureAwait(true);
         var loaded = result.Ok
@@ -261,70 +233,191 @@ internal sealed class AgentSession : INotifyPropertyChanged
         {
             ApplyRows(loaded);
             StatusText = result.Message;
-            return;
+            return false;
         }
 
         var loadedSet = loaded.Select(i => i.Fingerprint).ToHashSet(StringComparer.Ordinal);
-        _store.DropMissingFilesNotInAgent(loadedSet);
+        _store.KeepOnly(loadedSet);
 
-        var rows = new List<SshIdentity>();
         foreach (var item in loaded)
         {
             var stored = _store.TryGet(item.Fingerprint);
-            if (stored is not null)
-            {
-                item.Path = File.Exists(stored.Path) ? stored.Path : item.Path;
-                if (string.IsNullOrWhiteSpace(item.Comment))
-                    item.Comment = stored.Comment;
-            }
-
-            item.IsLoaded = true;
-            rows.Add(item);
+            item.Path = ResolveExistingPath(item) ?? stored?.Path;
+            if (string.IsNullOrWhiteSpace(item.Comment) && stored is not null)
+                item.Comment = stored.Comment;
+            _store.Remember(item.Fingerprint, item.Path, item.Comment, item.KeyType, item.Bits, persist: false);
         }
 
-        foreach (var (fingerprint, stored) in _store.Items)
+        _store.Persist();
+        ApplyRows(OrderRows(loaded));
+        return true;
+    }
+
+    private List<SshIdentity> OrderRows(IReadOnlyList<SshIdentity> loaded)
+    {
+        var byFingerprint = loaded.ToDictionary(item => item.Fingerprint, StringComparer.Ordinal);
+        var order = new List<string>();
+        foreach (var identity in Identities)
         {
-            if (loadedSet.Contains(fingerprint))
-                continue;
-            rows.Add(new SshIdentity(
-                fingerprint,
-                stored.Comment,
-                stored.Type,
-                stored.Bits,
-                File.Exists(stored.Path) ? stored.Path : stored.Path,
-                isLoaded: false));
+            if (byFingerprint.ContainsKey(identity.Fingerprint))
+                AddUnique(order, identity.Fingerprint);
         }
 
-        ApplyRows(rows);
-        UpdateStatusFromCounts();
+        foreach (var item in loaded)
+            AddUnique(order, item.Fingerprint);
+
+        return order.Select(fingerprint => byFingerprint[fingerprint]).ToList();
+    }
+
+    private static void AddUnique(List<string> order, string fingerprint)
+    {
+        if (!order.Contains(fingerprint, StringComparer.Ordinal))
+            order.Add(fingerprint);
     }
 
     private void ApplyRows(IReadOnlyList<SshIdentity> rows)
     {
-        Identities.Clear();
-        foreach (var row in rows)
-            Identities.Add(row);
+        var desired = rows.Select(r => r.Fingerprint).ToHashSet(StringComparer.Ordinal);
+        for (var i = Identities.Count - 1; i >= 0; i--)
+        {
+            if (!desired.Contains(Identities[i].Fingerprint))
+                Identities.RemoveAt(i);
+        }
 
-        LoadedCount = rows.Count(r => r.IsLoaded);
-        DisabledCount = rows.Count(r => !r.IsLoaded);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var existingIndex = IndexOfFingerprint(row.Fingerprint);
+            if (existingIndex < 0)
+            {
+                Identities.Insert(i, row);
+                continue;
+            }
+
+            MergeRow(Identities[existingIndex], row);
+            if (existingIndex != i)
+                Identities.Move(existingIndex, i);
+        }
+
+        LoadedCount = rows.Count;
+        OnPropertyChanged(nameof(HasKeys));
+        OnPropertyChanged(nameof(IsEmpty));
     }
 
-    private void UpdateStatusFromCounts()
+    private int IndexOfFingerprint(string fingerprint)
     {
-        if (LoadedCount == 0 && DisabledCount == 0)
-            StatusText = "No keys loaded";
-        else if (DisabledCount == 0)
-            StatusText = LoadedCountText;
-        else
-            StatusText = $"{LoadedCount} loaded, {DisabledCount} disabled";
+        for (var i = 0; i < Identities.Count; i++)
+        {
+            if (string.Equals(Identities[i].Fingerprint, fingerprint, StringComparison.Ordinal))
+                return i;
+        }
+
+        return -1;
     }
+
+    private static void MergeRow(SshIdentity target, SshIdentity source)
+    {
+        target.Comment = source.Comment;
+        target.KeyType = source.KeyType;
+        target.Bits = source.Bits;
+        if (!string.IsNullOrWhiteSpace(source.Path))
+            target.Path = source.Path;
+    }
+
+    private async Task<SshAgentResult> RemoveLoadedAsync(SshIdentity identity)
+    {
+        var path = ResolveExistingPath(identity);
+        if (!string.IsNullOrWhiteSpace(path))
+            return await _client.RemoveAsync(path).ConfigureAwait(true);
+
+        var line = await FindPublicKeyLineAsync(identity).ConfigureAwait(true);
+        if (string.IsNullOrWhiteSpace(line))
+            return SshAgentResult.Fail("Could not unload the key from the agent.");
+
+        return await RemoveViaPublicLineAsync(line).ConfigureAwait(true);
+    }
+
+    private async Task<string?> FindPublicKeyLineAsync(SshIdentity identity)
+    {
+        var path = ResolveExistingPath(identity);
+        if (!string.IsNullOrWhiteSpace(path))
+        {
+            var pub = path + ".pub";
+            if (File.Exists(pub))
+            {
+                var fromFile = ReadFirstLine(pub);
+                if (!string.IsNullOrWhiteSpace(fromFile))
+                    return fromFile;
+            }
+        }
+
+        var listed = await _client.ListPublicAsync().ConfigureAwait(true);
+        if (!listed.Ok || listed.Value is not { Count: > 0 })
+            return null;
+
+        foreach (var line in listed.Value)
+        {
+            var printed = await _keygen.FingerprintPublicLineAsync(line).ConfigureAwait(true);
+            if (printed is { Ok: true, Value: { } found }
+                && string.Equals(found.Fingerprint, identity.Fingerprint, StringComparison.Ordinal))
+                return line;
+        }
+
+        return null;
+    }
+
+    private async Task<SshAgentResult> RemoveViaPublicLineAsync(string publicKeyLine)
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "ssh-agent-gui-" + Guid.NewGuid().ToString("n") + ".pub");
+        try
+        {
+            await File.WriteAllTextAsync(tmp, publicKeyLine.Trim() + Environment.NewLine).ConfigureAwait(true);
+            return await _client.RemoveAsync(tmp).ConfigureAwait(true);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(tmp);
+            }
+            catch (IOException)
+            {
+                // leftover temp is harmless
+            }
+        }
+    }
+
+    private static string? ReadFirstLine(string filePath)
+    {
+        foreach (var line in File.ReadLines(filePath))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length > 0)
+                return trimmed;
+        }
+
+        return null;
+    }
+
+    private void SetOutcome(bool ok, string failMessage, bool listed, string successText)
+    {
+        if (!ok)
+            StatusText = failMessage;
+        else if (listed)
+            StatusText = successText;
+    }
+
+    private string RefreshedStatus() =>
+        LoadedCount == 0 ? "Refreshed — no keys loaded"
+        : LoadedCount == 1 ? "Refreshed — 1 key loaded"
+        : $"Refreshed — {LoadedCount} keys loaded";
 
     private HashSet<string> LoadedFingerprints() =>
-        Identities.Where(i => i.IsLoaded).Select(i => i.Fingerprint).ToHashSet(StringComparer.Ordinal);
+        Identities.Select(i => i.Fingerprint).ToHashSet(StringComparer.Ordinal);
 
     private void BindNewLoaded(HashSet<string> before, string path)
     {
-        foreach (var identity in Identities.Where(i => i.IsLoaded && !before.Contains(i.Fingerprint)))
+        foreach (var identity in Identities.Where(i => !before.Contains(i.Fingerprint)))
         {
             identity.Path = path;
             _store.Upsert(identity, path);

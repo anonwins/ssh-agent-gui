@@ -37,8 +37,21 @@ internal static class SshAddOutputParser
                 fingerprint: match.Groups["fp"].Value,
                 comment: comment,
                 keyType: match.Groups["type"].Value,
-                bits: bits,
-                isLoaded: true));
+                bits: bits));
+        }
+
+        return list;
+    }
+
+    public static List<string> ParsePublicKeys(string stdout)
+    {
+        var list = new List<string>();
+        foreach (var raw in stdout.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || IsEmptyAgent(line) || IsAgentUnavailable(line))
+                continue;
+            list.Add(line);
         }
 
         return list;

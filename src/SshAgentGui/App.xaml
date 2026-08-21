@@ -6,9 +6,10 @@
              SessionEnding="App_OnSessionEnding"
              Exit="App_OnExit">
     <Application.Resources>
-        <Style TargetType="Button">
-            <Setter Property="Padding" Value="10,4"/>
-            <Setter Property="MinWidth" Value="80"/>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Dark.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

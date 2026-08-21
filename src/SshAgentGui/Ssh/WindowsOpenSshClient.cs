@@ -12,6 +12,16 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
         return ClassifyList(output);
     }
 
+    public async Task<SshAgentResult<List<string>>> ListPublicAsync(CancellationToken cancellationToken = default)
+    {
+        if (OpenSshProcess.FindExe("ssh-add.exe") is null)
+            return SshAgentResult<List<string>>.Missing(MissingMessage());
+
+        var output = await OpenSshProcess.RunHiddenAsync("ssh-add.exe", ["-L"], cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+        return ClassifyPublic(output);
+    }
+
     public async Task<SshAgentResult> AddAsync(string keyPath, bool interactive, CancellationToken cancellationToken = default)
     {
         if (OpenSshProcess.FindExe("ssh-add.exe") is null)
@@ -78,6 +88,21 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
             return SshAgentResult<List<SshIdentity>>.Fail(string.IsNullOrWhiteSpace(text) ? "ssh-add -l failed." : text);
 
         return SshAgentResult<List<SshIdentity>>.OkValue(rows);
+    }
+
+    private static SshAgentResult<List<string>> ClassifyPublic(ProcessOutput output)
+    {
+        var text = output.Combined;
+        if (SshAddOutputParser.IsEmptyAgent(text))
+            return SshAgentResult<List<string>>.Empty();
+        if (SshAddOutputParser.IsAgentUnavailable(text))
+            return SshAgentResult<List<string>>.Unavailable(UnavailableMessage(text));
+
+        var rows = SshAddOutputParser.ParsePublicKeys(output.Stdout);
+        if (output.ExitCode == 0 || rows.Count > 0)
+            return SshAgentResult<List<string>>.OkValue(rows);
+
+        return SshAgentResult<List<string>>.Fail(string.IsNullOrWhiteSpace(text) ? "ssh-add -L failed." : text);
     }
 
     private static SshAgentResult ClassifyMutation(ProcessOutput output, bool successIfEmpty)

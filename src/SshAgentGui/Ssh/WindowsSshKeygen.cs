@@ -52,6 +52,30 @@ internal sealed class WindowsSshKeygen
             : text);
     }
 
+    public async Task<SshAgentResult<SshIdentity>> FingerprintPublicLineAsync(
+        string publicKeyLine,
+        CancellationToken cancellationToken = default)
+    {
+        var tmp = Path.Combine(Path.GetTempPath(), "ssh-agent-gui-" + Guid.NewGuid().ToString("n") + ".pub");
+        try
+        {
+            await File.WriteAllTextAsync(tmp, publicKeyLine.Trim() + Environment.NewLine, cancellationToken)
+                .ConfigureAwait(false);
+            return await FingerprintAsync(tmp, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(tmp);
+            }
+            catch (IOException)
+            {
+                // temp leftover is harmless
+            }
+        }
+    }
+
     private static string Sanitize(string text, string secret)
     {
         if (string.IsNullOrEmpty(secret) || string.IsNullOrEmpty(text))

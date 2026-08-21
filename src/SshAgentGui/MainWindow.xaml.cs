@@ -8,6 +8,7 @@ public partial class MainWindow : Window
 {
     private readonly AgentSession _session;
     private bool _allowClose;
+    private bool _exitPromptOpen;
 
     internal MainWindow(AgentSession session)
     {
@@ -30,6 +31,7 @@ public partial class MainWindow : Window
 
     public void HideToTray()
     {
+        SaveUi();
         WindowState = WindowState.Normal;
         Hide();
         ShowInTaskbar = false;
@@ -39,30 +41,62 @@ public partial class MainWindow : Window
 
     public async Task RequestExitAsync()
     {
-        if (_allowClose)
+        if (_allowClose || _exitPromptOpen)
             return;
 
-        var dialog = new ExitConfirmWindow { Owner = IsVisible ? this : null };
-        if (dialog.ShowDialog() != true)
-            return;
-
-        if (dialog.ClearKeys)
+        if (!_session.IsBusy && _session.LoadedCount == 0)
         {
-            var ok = await _session.UnloadAllAsync().ConfigureAwait(true);
-            if (!ok)
-            {
-                MessageBox.Show(
-                    this,
-                    _session.StatusText,
-                    "SSH Agent",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                return;
-            }
+            ShutdownApp();
+            return;
         }
 
+        _exitPromptOpen = true;
+        try
+        {
+            var dialog = new ExitConfirmWindow { Owner = IsVisible ? this : null };
+            if (dialog.ShowDialog() != true)
+                return;
+
+            if (dialog.ClearKeys)
+            {
+                var ok = await _session.UnloadAllAsync().ConfigureAwait(true);
+                if (!ok)
+                {
+                    MessageBox.Show(
+                        this,
+                        _session.StatusText,
+                        "SSH Agent GUI",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+            }
+
+            ShutdownApp();
+        }
+        finally
+        {
+            _exitPromptOpen = false;
+        }
+    }
+
+    private void ShutdownApp()
+    {
+        SaveUi();
         _allowClose = true;
         Application.Current.Shutdown();
+    }
+
+    private void SaveUi()
+    {
+        UiSettings.Current.Capture(this);
+        UiSettings.Current.Save();
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        UiSettings.Current.Apply(this);
+        TitleBarDarkMode.Apply(this);
     }
 
     private void OnStateChanged(object sender, EventArgs e)
@@ -74,20 +108,21 @@ public partial class MainWindow : Window
     private void OnClosing(object sender, CancelEventArgs e)
     {
         if (_allowClose)
+        {
+            SaveUi();
             return;
-        e.Cancel = true;
-        HideToTray();
-    }
+        }
 
-    private async void OnExitClick(object sender, RoutedEventArgs e) =>
-        await RequestExitAsync().ConfigureAwait(true);
+        e.Cancel = true;
+        _ = RequestExitAsync();
+    }
 
     private async void OnRefreshClick(object sender, RoutedEventArgs e) =>
         await _session.RefreshAsync().ConfigureAwait(true);
 
     private async void OnAddKeyClick(object sender, RoutedEventArgs e)
     {
-        var path = KeyFileDialog.OpenExisting("Add key");
+        var path = KeyFileDialog.OpenExisting("Load key");
         if (path is null)
             return;
         await _session.AddKeyAsync(path).ConfigureAwait(true);
@@ -95,45 +130,21 @@ public partial class MainWindow : Window
 
     private async void OnCreateKeyClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new CreateKeyWindow { Owner = this };
+        var dialog = new CreateKeyWindow { Owner = IsVisible ? this : null };
         if (dialog.ShowDialog() != true || dialog.Request is null)
             return;
         await _session.CreateKeyAsync(dialog.Request).ConfigureAwait(true);
     }
 
-    private async void OnUnloadAllClick(object sender, RoutedEventArgs e)
-    {
-        var answer = MessageBox.Show(
-            this,
-            "Unload all keys from the agent? Tracked keys stay in the list as disabled.",
-            "SSH Agent",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question,
-            MessageBoxResult.No);
-        if (answer != MessageBoxResult.Yes)
-            return;
-        await _session.UnloadAllAsync().ConfigureAwait(true);
-    }
-
-    private async void OnToggleClick(object sender, RoutedEventArgs e)
+    private async void OnCopyClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SshIdentity identity })
             return;
 
-        if (identity.IsLoaded)
-        {
-            var path = ResolvePath(identity, "Select the key file to disable");
-            if (path is null)
-                return;
-            await _session.DisableAsync(identity, path).ConfigureAwait(true);
-        }
-        else
-        {
-            var path = ResolvePath(identity, "Select the key file to enable");
-            if (path is null)
-                return;
-            await _session.EnableAsync(identity, path).ConfigureAwait(true);
-        }
+        var line = await _session.GetPublicKeyAsync(identity).ConfigureAwait(true);
+        if (string.IsNullOrWhiteSpace(line))
+            return;
+        System.Windows.Clipboard.SetText(line);
     }
 
     private async void OnUnloadClick(object sender, RoutedEventArgs e)
@@ -141,20 +152,6 @@ public partial class MainWindow : Window
         if (sender is not FrameworkElement { DataContext: SshIdentity identity })
             return;
 
-        string? path = _session.ResolveExistingPath(identity);
-        if (identity.IsLoaded && path is null)
-        {
-            path = KeyFileDialog.OpenExisting("Select the key file to unload");
-            if (path is null)
-                return;
-        }
-
-        await _session.UnloadAsync(identity, path).ConfigureAwait(true);
-    }
-
-    private string? ResolvePath(SshIdentity identity, string title)
-    {
-        var path = _session.ResolveExistingPath(identity);
-        return path ?? KeyFileDialog.OpenExisting(title);
+        await _session.UnloadAsync(identity).ConfigureAwait(true);
     }
 }

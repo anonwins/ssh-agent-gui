@@ -2,14 +2,8 @@ namespace SshAgentGui;
 
 internal static class KeyFileDialog
 {
-    public static string DefaultSshDirectory
-    {
-        get
-        {
-            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh");
-            return dir;
-        }
-    }
+    public static string DefaultSshDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh");
 
     public static string? OpenExisting(string title)
     {
@@ -19,9 +13,11 @@ internal static class KeyFileDialog
             Filter = "SSH keys|id_*;*.pem;*.key|All files|*.*",
             CheckFileExists = true,
         };
-        if (Directory.Exists(DefaultSshDirectory))
-            dialog.InitialDirectory = DefaultSshDirectory;
-        return dialog.ShowDialog() == true ? dialog.FileName : null;
+        dialog.InitialDirectory = UiSettings.Current.ExistingOpenDir() ?? ExistingDefaultSsh();
+        if (dialog.ShowDialog() != true)
+            return null;
+        UiSettings.Current.RememberOpen(dialog.FileName);
+        return dialog.FileName;
     }
 
     public static string? BrowseNew(string title, string currentPath)
@@ -34,11 +30,17 @@ internal static class KeyFileDialog
             OverwritePrompt = false,
             AddExtension = false,
         };
-        var dir = Path.GetDirectoryName(currentPath);
-        if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-            dialog.InitialDirectory = dir;
-        else if (Directory.Exists(DefaultSshDirectory))
-            dialog.InitialDirectory = DefaultSshDirectory;
-        return dialog.ShowDialog() == true ? dialog.FileName : null;
+        var fromPath = Path.GetDirectoryName(currentPath);
+        dialog.InitialDirectory =
+            !string.IsNullOrEmpty(fromPath) && Directory.Exists(fromPath)
+                ? fromPath
+                : UiSettings.Current.ExistingSaveDir() ?? ExistingDefaultSsh();
+        if (dialog.ShowDialog() != true)
+            return null;
+        UiSettings.Current.RememberSave(dialog.FileName);
+        return dialog.FileName;
     }
+
+    private static string? ExistingDefaultSsh() =>
+        Directory.Exists(DefaultSshDirectory) ? DefaultSshDirectory : null;
 }

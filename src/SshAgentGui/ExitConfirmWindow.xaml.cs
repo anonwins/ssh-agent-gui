@@ -11,6 +11,8 @@ public partial class ExitConfirmWindow : Window
         InitializeComponent();
     }
 
+    private void OnSourceInitialized(object? sender, EventArgs e) => TitleBarDarkMode.Apply(this);
+
     private void OnClearClick(object sender, RoutedEventArgs e)
     {
         ClearKeys = true;

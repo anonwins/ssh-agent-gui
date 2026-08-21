@@ -9,16 +9,14 @@ internal sealed class SshIdentity : INotifyPropertyChanged
     private string _keyType;
     private int _bits;
     private string? _path;
-    private bool _isLoaded;
 
-    public SshIdentity(string fingerprint, string comment, string keyType, int bits, string? path = null, bool isLoaded = false)
+    public SshIdentity(string fingerprint, string comment, string keyType, int bits, string? path = null)
     {
         Fingerprint = fingerprint;
         _comment = comment;
         _keyType = keyType;
         _bits = bits;
         _path = path;
-        _isLoaded = isLoaded;
     }
 
     public string Fingerprint { get; }
@@ -26,7 +24,11 @@ internal sealed class SshIdentity : INotifyPropertyChanged
     public string Comment
     {
         get => _comment;
-        set => SetField(ref _comment, value);
+        set
+        {
+            if (SetField(ref _comment, value))
+                OnPropertyChanged(nameof(DisplayComment));
+        }
     }
 
     public string KeyType
@@ -47,17 +49,7 @@ internal sealed class SshIdentity : INotifyPropertyChanged
         set => SetField(ref _path, value);
     }
 
-    public bool IsLoaded
-    {
-        get => _isLoaded;
-        set
-        {
-            if (SetField(ref _isLoaded, value))
-                OnPropertyChanged(nameof(ToggleLabel));
-        }
-    }
-
-    public string ToggleLabel => IsLoaded ? "Disable" : "Enable";
+    public string DisplayComment => string.IsNullOrWhiteSpace(Comment) ? "(no comment)" : Comment;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
