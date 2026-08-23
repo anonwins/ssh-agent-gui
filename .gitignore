@@ -8,5 +8,6 @@ obj/
 *.sln.docstates
 [Dd]ebug/
 [Rr]elease/
-win/
 *.log
+*.lnk
+TestResults/

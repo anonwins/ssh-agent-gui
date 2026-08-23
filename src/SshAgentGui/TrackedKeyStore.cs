@@ -17,6 +17,9 @@ internal sealed class TrackedKeyRecord
 
     [JsonPropertyName("bits")]
     public int Bits { get; set; }
+
+    [JsonPropertyName("expiresAtUtc")]
+    public DateTimeOffset? ExpiresAtUtc { get; set; }
 }
 
 internal sealed class TrackedKeyStore
@@ -32,10 +35,7 @@ internal sealed class TrackedKeyStore
 
     public TrackedKeyStore(string? filePath = null)
     {
-        var dir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "SshAgentGui");
-        _filePath = filePath ?? Path.Combine(dir, "keys.json");
+        _filePath = filePath ?? AppPaths.KeysFile;
     }
 
     public IReadOnlyDictionary<string, TrackedKeyRecord> Items => _items;
@@ -68,9 +68,6 @@ internal sealed class TrackedKeyStore
     public void Upsert(SshIdentity identity, string path) =>
         Remember(identity.Fingerprint, path, identity.Comment, identity.KeyType, identity.Bits);
 
-    public void Upsert(string fingerprint, string path, string comment, string type, int bits) =>
-        Remember(fingerprint, path, comment, type, bits);
-
     public void Remember(string fingerprint, string? path, string comment, string type, int bits, bool persist = true)
     {
         _items.TryGetValue(fingerprint, out var existing);
@@ -80,18 +77,36 @@ internal sealed class TrackedKeyStore
             Comment = FirstNonEmpty(comment, existing?.Comment),
             Type = FirstNonEmpty(type, existing?.Type),
             Bits = bits != 0 ? bits : existing?.Bits ?? 0,
+            ExpiresAtUtc = existing?.ExpiresAtUtc,
         };
         if (existing is not null
             && existing.Path == next.Path
             && existing.Comment == next.Comment
             && existing.Type == next.Type
-            && existing.Bits == next.Bits)
+            && existing.Bits == next.Bits
+            && existing.ExpiresAtUtc == next.ExpiresAtUtc)
             return;
 
         _items[fingerprint] = next;
         _dirty = true;
         if (persist)
             Save();
+    }
+
+    public void SetExpiry(string fingerprint, DateTimeOffset? expiresAtUtc)
+    {
+        if (!_items.TryGetValue(fingerprint, out var existing))
+        {
+            existing = new TrackedKeyRecord();
+            _items[fingerprint] = existing;
+        }
+
+        if (existing.ExpiresAtUtc == expiresAtUtc)
+            return;
+
+        existing.ExpiresAtUtc = expiresAtUtc;
+        _dirty = true;
+        Save();
     }
 
     public void Persist()

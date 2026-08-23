@@ -12,24 +12,39 @@ internal sealed class WindowsSshKeygen
         if (OpenSshProcess.FindExe("ssh-keygen.exe") is null)
             return SshAgentResult.Missing("Windows OpenSSH ssh-keygen.exe was not found.");
 
-        var args = new List<string> { "-q", "-t", type, "-f", path, "-C", comment, "-N", passphrase };
+        var args = new List<string> { "-q", "-t", type, "-f", path, "-C", comment };
         if (string.Equals(type, "rsa", StringComparison.OrdinalIgnoreCase))
         {
             args.Insert(3, "-b");
             args.Insert(4, "4096");
         }
 
-        var workDir = Path.GetDirectoryName(path);
-        var output = await OpenSshProcess.RunHiddenAsync("ssh-keygen.exe", args, workDir, cancellationToken)
-            .ConfigureAwait(false);
+        var requestedSecret = !string.IsNullOrEmpty(passphrase);
+        ProcessOutput output;
+        if (requestedSecret)
+        {
+            output = await OpenSshProcess.RunWithAskPassAsync("ssh-keygen.exe", args, passphrase, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else
+        {
+            args.Add("-N");
+            args.Add("");
+            output = await OpenSshProcess.RunHiddenAsync("ssh-keygen.exe", args, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (output.ExitCode == 0 && requestedSecret)
+        {
+            var verified = EnsureCreatedKeyEncrypted(path);
+            if (!verified.Ok)
+                return verified;
+        }
 
         if (output.ExitCode == 0)
             return SshAgentResult.Success();
 
-        var text = Sanitize(output.Combined, passphrase);
-        return SshAgentResult.Fail(string.IsNullOrWhiteSpace(text)
-            ? "ssh-keygen failed."
-            : text);
+        return SshAgentResult.Fail(OpenSshText.ForKeygen(output.Combined, passphrase));
     }
 
     public async Task<SshAgentResult<SshIdentity>> FingerprintAsync(
@@ -39,17 +54,16 @@ internal sealed class WindowsSshKeygen
         if (OpenSshProcess.FindExe("ssh-keygen.exe") is null)
             return SshAgentResult<SshIdentity>.Missing("Windows OpenSSH ssh-keygen.exe was not found.");
 
-        var workDir = Path.GetDirectoryName(path);
-        var output = await OpenSshProcess.RunHiddenAsync("ssh-keygen.exe", ["-l", "-f", path], workDir, cancellationToken)
+        var output = await OpenSshProcess.RunHiddenAsync(
+                "ssh-keygen.exe",
+                ["-l", "-f", path],
+                cancellationToken: cancellationToken)
             .ConfigureAwait(false);
         var parsed = SshAddOutputParser.ParseList(output.Stdout);
         if (parsed.Count > 0)
             return SshAgentResult<SshIdentity>.OkValue(parsed[0]);
 
-        var text = output.Combined;
-        return SshAgentResult<SshIdentity>.Fail(string.IsNullOrWhiteSpace(text)
-            ? "Could not read the new key fingerprint."
-            : text);
+        return SshAgentResult<SshIdentity>.Fail("Could not read the new key fingerprint.");
     }
 
     public async Task<SshAgentResult<SshIdentity>> FingerprintPublicLineAsync(
@@ -76,10 +90,34 @@ internal sealed class WindowsSshKeygen
         }
     }
 
-    private static string Sanitize(string text, string secret)
+    // Backstop inspector, not the definition of encryption: OpenSSH treats a failed
+    // askpass as an empty passphrase and may exit 0 with an unencrypted key.
+    internal static SshAgentResult EnsureCreatedKeyEncrypted(string path)
     {
-        if (string.IsNullOrEmpty(secret) || string.IsNullOrEmpty(text))
-            return text;
-        return text.Replace(secret, "********", StringComparison.Ordinal);
+        if (PrivateKeyFile.TryConfirmEncrypted(path))
+            return SshAgentResult.Success();
+        DeleteCreatedKey(path);
+        return SshAgentResult.Fail(OpenSshText.NotEncrypted);
+    }
+
+    internal static void DeleteCreatedKey(string path)
+    {
+        TryDelete(path);
+        TryDelete(path + ".pub");
+    }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 }

@@ -15,10 +15,7 @@ internal static class SshAddOutputParser
     {
         return Contains(text, "Error connecting to agent")
                || Contains(text, "Could not open a connection")
-               || Contains(text, "No such file or directory")
-               || Contains(text, "No such process")
-               || Contains(text, "Connection refused")
-               || Contains(text, "Bad file descriptor");
+               || Contains(text, "communication with agent failed");
     }
 
     public static List<SshIdentity> ParseList(string stdout)

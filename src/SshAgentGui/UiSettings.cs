@@ -17,10 +17,7 @@ internal sealed class UiSettings
 
     public UiSettings()
     {
-        _filePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "SshAgentGui",
-            "ui.json");
+        _filePath = AppPaths.UiFile;
     }
 
     [JsonPropertyName("normalLeft")]

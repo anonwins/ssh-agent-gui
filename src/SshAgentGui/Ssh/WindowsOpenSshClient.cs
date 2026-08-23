@@ -22,12 +22,17 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
         return ClassifyPublic(output);
     }
 
-    public async Task<SshAgentResult> AddAsync(string keyPath, string? passphrase = null, CancellationToken cancellationToken = default)
+    public async Task<SshAgentResult> AddAsync(
+        string keyPath,
+        string? passphrase = null,
+        TimeSpan? lifetime = null,
+        CancellationToken cancellationToken = default)
     {
         if (OpenSshProcess.FindExe("ssh-add.exe") is null)
             return SshAgentResult.Missing(MissingMessage());
 
-        var output = await OpenSshProcess.RunAddAsync(keyPath, passphrase, cancellationToken).ConfigureAwait(false);
+        var output = await OpenSshProcess.RunAddAsync(keyPath, passphrase, lifetime, cancellationToken)
+            .ConfigureAwait(false);
         return ClassifyMutation(output, successIfEmpty: false);
     }
 
@@ -36,12 +41,10 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
         if (OpenSshProcess.FindExe("ssh-add.exe") is null)
             return SshAgentResult.Missing(MissingMessage());
 
-        var workDir = Path.GetDirectoryName(keyPath);
         var output = await OpenSshProcess.RunHiddenAsync(
                 "ssh-add.exe",
                 ["-d", keyPath],
-                workDir,
-                cancellationToken)
+                cancellationToken: cancellationToken)
             .ConfigureAwait(false);
         return ClassifyMutation(output, successIfEmpty: true);
     }
@@ -69,7 +72,7 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
             return SshAgentResult<List<SshIdentity>>.OkValue(rows);
 
         if (rows.Count == 0)
-            return SshAgentResult<List<SshIdentity>>.Fail(string.IsNullOrWhiteSpace(text) ? "ssh-add -l failed." : text);
+            return SshAgentResult<List<SshIdentity>>.Fail(OpenSshText.ForList(text));
 
         return SshAgentResult<List<SshIdentity>>.OkValue(rows);
     }
@@ -86,7 +89,7 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
         if (output.ExitCode == 0 || rows.Count > 0)
             return SshAgentResult<List<string>>.OkValue(rows);
 
-        return SshAgentResult<List<string>>.Fail(string.IsNullOrWhiteSpace(text) ? "ssh-add -L failed." : text);
+        return SshAgentResult<List<string>>.Fail(OpenSshText.ForList(text));
     }
 
     private static SshAgentResult ClassifyMutation(ProcessOutput output, bool successIfEmpty)
@@ -98,7 +101,7 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
             return SshAgentResult.Success();
         if (successIfEmpty && SshAddOutputParser.IsEmptyAgent(text))
             return SshAgentResult.Success();
-        return SshAgentResult.Fail(string.IsNullOrWhiteSpace(text) ? "ssh-add failed." : text);
+        return SshAgentResult.Fail(OpenSshText.ForAdd(text, output.ExitCode, successIfEmpty));
     }
 
     private static string MissingMessage() =>

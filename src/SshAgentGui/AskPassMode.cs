@@ -1,4 +1,6 @@
+using System.IO.Pipes;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace SshAgentGui;
 
@@ -6,60 +8,107 @@ internal static class AskPassMode
 {
     public const string Flag = "--askpass";
     public const string LaunchEnv = "SSH_AGENT_GUI_ASKPASS";
-    public const string FileEnv = "SSH_AGENT_GUI_PASSPHRASE_FILE";
+    public const string PipeEnv = "SSH_AGENT_GUI_PASSPHRASE_PIPE";
+    public const string LegacyFileEnv = "SSH_AGENT_GUI_PASSPHRASE_FILE";
 
-    public static bool IsLaunch(IReadOnlyList<string> args)
+    private static readonly Regex WinPath = new(
+        @"[A-Za-z]:\\(?:[^\\/:*?""<>|\r\n]+\\)*[^\\/:*?""<>|\r\n]+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex UncPath = new(
+        @"\\\\[^\\/:*?""<>|\r\n]+(?:\\[^\\/:*?""<>|\r\n]+)+",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    public static bool IsLaunch(IReadOnlyList<string> args) =>
+        IsLaunch(args, Environment.GetEnvironmentVariable(LaunchEnv), Environment.GetEnvironmentVariable(PipeEnv));
+
+    public static bool IsLaunch(IReadOnlyList<string> args, string? launchEnv, string? pipeName)
     {
         if (args.Count > 0 && string.Equals(args[0], Flag, StringComparison.Ordinal))
             return true;
-        return string.Equals(Environment.GetEnvironmentVariable(LaunchEnv), "1", StringComparison.Ordinal);
+        if (!string.IsNullOrWhiteSpace(pipeName))
+            return true;
+        if (!string.Equals(launchEnv, "1", StringComparison.Ordinal))
+            return false;
+        return ExtraArgCount(args) > 0;
     }
 
     public static int Run(IReadOnlyList<string> args)
     {
-        var secret = TryReadOnce();
-        if (secret is null)
+        var pipeName = Environment.GetEnvironmentVariable(PipeEnv);
+        if (!string.IsNullOrWhiteSpace(pipeName))
         {
-            var parts = args.Count > 0 && string.Equals(args[0], Flag, StringComparison.Ordinal)
-                ? args.Skip(1)
-                : args;
-            var prompt = string.Join(" ", parts).Trim();
-            var dialog = new PassphraseWindow(prompt);
-            if (dialog.ShowDialog() != true)
+            if (!TryReadPassphraseFromPipe(pipeName, out var fromPipe) || fromPipe is null)
                 return 1;
-            secret = dialog.Passphrase;
+            WriteStdout(fromPipe);
+            return 0;
         }
 
-        WriteStdout(secret);
+        if (!IsAskPassInvoke(args))
+            return 1;
+
+        var prompt = SanitizePrompt(PromptFromArgs(args));
+        var dialog = new PassphraseWindow(prompt);
+        if (dialog.ShowDialog() != true)
+            return 1;
+
+        WriteStdout(dialog.Passphrase);
         return 0;
     }
 
-    private static string? TryReadOnce()
+    public static bool TryReadPassphraseFromPipe(string name, out string? secret)
     {
-        var file = Environment.GetEnvironmentVariable(FileEnv);
-        if (string.IsNullOrWhiteSpace(file) || !File.Exists(file))
-            return null;
+        secret = null;
         try
         {
-            var text = File.ReadAllText(file);
-            return text;
+            using var client = new NamedPipeClientStream(".", name, PipeDirection.In, PipeOptions.CurrentUserOnly);
+            client.Connect(5000);
+            using var buffer = new MemoryStream();
+            client.CopyTo(buffer);
+            secret = Utf8NoBom.GetString(buffer.ToArray());
+            return true;
         }
-        finally
+        catch (Exception ex) when (ex is TimeoutException or IOException or UnauthorizedAccessException)
         {
-            try
-            {
-                File.Delete(file);
-            }
-            catch (IOException)
-            {
-                // parent also deletes
-            }
+            return false;
         }
     }
 
+    internal static string SanitizePrompt(string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+            return "Enter the passphrase for this key.";
+
+        var text = prompt.Trim();
+        text = WinPath.Replace(text, m => Path.GetFileName(m.Value.TrimEnd(':', ' ')));
+        text = UncPath.Replace(text, m => Path.GetFileName(m.Value.TrimEnd(':', ' ')));
+        return string.IsNullOrWhiteSpace(text) ? "Enter the passphrase for this key." : text;
+    }
+
+    private static bool IsAskPassInvoke(IReadOnlyList<string> args) =>
+        (args.Count > 0 && string.Equals(args[0], Flag, StringComparison.Ordinal))
+        || ExtraArgCount(args) > 0;
+
+    private static int ExtraArgCount(IReadOnlyList<string> args)
+    {
+        if (args.Count == 0)
+            return 0;
+        return string.Equals(args[0], Flag, StringComparison.Ordinal) ? args.Count - 1 : args.Count;
+    }
+
+    private static string PromptFromArgs(IReadOnlyList<string> args)
+    {
+        var parts = args.Count > 0 && string.Equals(args[0], Flag, StringComparison.Ordinal)
+            ? args.Skip(1)
+            : args;
+        return string.Join(" ", parts).Trim();
+    }
+
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     private static void WriteStdout(string secret)
     {
-        using var writer = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+        using var writer = new StreamWriter(Console.OpenStandardOutput(), Utf8NoBom)
         {
             NewLine = "\n",
             AutoFlush = true,

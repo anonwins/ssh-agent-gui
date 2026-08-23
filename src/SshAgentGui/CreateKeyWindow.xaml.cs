@@ -12,6 +12,8 @@ public partial class CreateKeyWindow : Window
     public CreateKeyWindow()
     {
         InitializeComponent();
+        LifetimeBox.ItemsSource = KeyLifetime.Presets;
+        LifetimeBox.SelectedIndex = 0;
         CommentBox.Text = $"{Environment.UserName}@{Environment.MachineName}";
         PathBox.Text = DefaultPathForType(ed25519: true);
         PathBox.TextChanged += (_, _) => _pathTouched = true;
@@ -64,12 +66,14 @@ public partial class CreateKeyWindow : Window
             return;
         }
 
+        var lifetime = LifetimeBox.SelectedItem as KeyLifetime;
         Request = new CreateKeyRequest(
             Type: IsEd25519 ? "ed25519" : "rsa",
             Path: path,
             Comment: string.IsNullOrWhiteSpace(comment) ? $"{Environment.UserName}@{Environment.MachineName}" : comment,
             Passphrase: passphrase,
-            LoadIntoAgent: LoadBox.IsChecked == true);
+            LoadIntoAgent: LoadBox.IsChecked == true,
+            Lifetime: LoadBox.IsChecked == true ? lifetime?.Duration : null);
         DialogResult = true;
     }
 

@@ -1,16 +1,22 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Threading;
 using SshAgentGui.Ssh;
 
 namespace SshAgentGui;
 
-internal sealed class AgentSession : INotifyPropertyChanged
+internal readonly record struct ExpirySnapshot(string Fingerprint, int LoadGeneration, DateTimeOffset ExpiresAt);
+
+internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
 {
     private readonly ISshAgentClient _client;
     private readonly WindowsSshKeygen _keygen;
     private readonly TrackedKeyStore _store;
     private readonly WindowsSshAgentService _service;
+    private readonly TimeProvider _time;
+    private readonly HashSet<(string Fingerprint, int Generation)> _expireFail = [];
+    private DispatcherTimer? _timer;
     private bool _isBusy;
     private string _statusText = "Starting…";
     private int _loadedCount;
@@ -19,17 +25,20 @@ internal sealed class AgentSession : INotifyPropertyChanged
     private bool _canStartAgent;
     private SshAgentServiceState _serviceState = SshAgentServiceState.Stopped;
     private string _agentDownDetail = "";
+    private bool _disposed;
 
     public AgentSession(
         ISshAgentClient? client = null,
         WindowsSshKeygen? keygen = null,
         TrackedKeyStore? store = null,
-        WindowsSshAgentService? service = null)
+        WindowsSshAgentService? service = null,
+        TimeProvider? time = null)
     {
         _client = client ?? new WindowsOpenSshClient();
         _keygen = keygen ?? new WindowsSshKeygen();
         _store = store ?? new TrackedKeyStore();
         _service = service ?? new WindowsSshAgentService();
+        _time = time ?? TimeProvider.System;
         _store.Load();
     }
 
@@ -124,10 +133,11 @@ internal sealed class AgentSession : INotifyPropertyChanged
         }).ConfigureAwait(true);
     }
 
-    public async Task AddKeyAsync(string path)
+    public async Task AddKeyAsync(string path, TimeSpan? lifetime = null)
     {
         await WithBusy(async () =>
         {
+            path = Path.GetFullPath(path);
             var before = LoadedFingerprints();
             string? passphrase = null;
             if (PrivateKeyFile.LooksEncrypted(path))
@@ -140,8 +150,13 @@ internal sealed class AgentSession : INotifyPropertyChanged
                 }
             }
 
-            var result = await _client.AddAsync(path, passphrase).ConfigureAwait(true);
+            var result = await _client.AddAsync(path, passphrase, lifetime).ConfigureAwait(true);
+            if (result.Ok)
+                await PersistExpiryForFileAsync(path, lifetime).ConfigureAwait(true);
+
             var listed = await RefreshCoreAsync().ConfigureAwait(true);
+            if (result.Ok)
+                await StampLoadedAsync(path, lifetime).ConfigureAwait(true);
             BindNewLoaded(before, path);
             SetOutcome(result.Ok, result.Message, listed, "Loaded " + Path.GetFileName(path));
             return result.Ok;
@@ -161,8 +176,9 @@ internal sealed class AgentSession : INotifyPropertyChanged
             }
 
             _store.Remove(identity.Fingerprint);
+            DropRow(identity.Fingerprint);
             if (await RefreshCoreAsync().ConfigureAwait(true))
-                StatusText = "Unloaded " + identity.DisplayComment;
+                StatusText = "Unloaded " + UnloadLabel(identity);
             return true;
         }).ConfigureAwait(true);
     }
@@ -198,13 +214,14 @@ internal sealed class AgentSession : INotifyPropertyChanged
     {
         return await WithBusy(async () =>
         {
-            var dir = Path.GetDirectoryName(request.Path);
+            var path = Path.GetFullPath(request.Path);
+            var dir = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
 
             var created = await _keygen.CreateAsync(
                     request.Type,
-                    request.Path,
+                    path,
                     request.Comment,
                     request.Passphrase)
                 .ConfigureAwait(true);
@@ -214,34 +231,43 @@ internal sealed class AgentSession : INotifyPropertyChanged
                 return false;
             }
 
-            var printed = await _keygen.FingerprintAsync(request.Path).ConfigureAwait(true);
+            var printed = await _keygen.FingerprintAsync(path).ConfigureAwait(true);
             if (printed is { Ok: true, Value: { } identity })
             {
-                identity.Path = request.Path;
-                _store.Upsert(identity, request.Path);
+                identity.Path = path;
+                _store.Upsert(identity, path);
             }
 
             var before = LoadedFingerprints();
             string? addFailed = null;
+            var added = false;
             if (request.LoadIntoAgent)
             {
                 var add = await _client.AddAsync(
-                        request.Path,
-                        string.IsNullOrEmpty(request.Passphrase) ? null : request.Passphrase)
+                        path,
+                        string.IsNullOrEmpty(request.Passphrase) ? null : request.Passphrase,
+                        request.Lifetime)
                     .ConfigureAwait(true);
-                if (!add.Ok)
+                if (add.Ok)
+                {
+                    added = true;
+                    await PersistExpiryForFileAsync(path, request.Lifetime).ConfigureAwait(true);
+                }
+                else
                     addFailed = "Key created, but it was not loaded into the agent. " + add.Message;
             }
 
             var listed = await RefreshCoreAsync().ConfigureAwait(true);
-            BindNewLoaded(before, request.Path);
-            BindPath(request.Path);
+            if (added)
+                await StampLoadedAsync(path, request.Lifetime).ConfigureAwait(true);
+            BindNewLoaded(before, path);
+            BindPath(path);
             if (addFailed is not null)
                 StatusText = addFailed;
             else if (listed)
-                StatusText = "Created " + Path.GetFileName(request.Path);
+                StatusText = "Created " + Path.GetFileName(path);
             if (created.Ok)
-                UiSettings.Current.RememberSave(request.Path);
+                UiSettings.Current.RememberSave(path);
             return created.Ok;
         }).ConfigureAwait(true);
     }
@@ -288,6 +314,42 @@ internal sealed class AgentSession : INotifyPropertyChanged
         }).ConfigureAwait(true);
     }
 
+    internal async Task<bool> TryExpireAsync(ExpirySnapshot captured)
+    {
+        return await WithBusy(async () =>
+        {
+            var current = FindIdentity(captured.Fingerprint);
+            if (current is null
+                || current.LoadGeneration != captured.LoadGeneration
+                || current.ExpiresAt is not { } exp
+                || exp > _time.GetUtcNow())
+                return false;
+
+            var removed = await RemoveLoadedAsync(current).ConfigureAwait(true);
+            if (!removed.Ok)
+            {
+                _expireFail.Add((captured.Fingerprint, captured.LoadGeneration));
+                StatusText = removed.Message;
+                return false;
+            }
+
+            _expireFail.Remove((captured.Fingerprint, captured.LoadGeneration));
+            _store.Remove(current.Fingerprint);
+            DropRow(current.Fingerprint);
+            await RefreshCoreAsync().ConfigureAwait(true);
+            StatusText = "Unloaded " + UnloadLabel(current);
+            return true;
+        }).ConfigureAwait(true);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+        _disposed = true;
+        StopTimer();
+    }
+
     private void BindPath(string path)
     {
         foreach (var identity in Identities)
@@ -304,14 +366,9 @@ internal sealed class AgentSession : INotifyPropertyChanged
     private async Task<bool> RefreshCoreAsync()
     {
         var result = await _client.ListAsync().ConfigureAwait(true);
-        var loaded = result.Ok
-            ? result.Value ?? []
-            : [];
-
         if (!result.Ok && result.Status is not SshAgentStatus.Empty)
         {
             SetAvailability(result.Status);
-            ApplyRows(loaded);
             StatusText = result.Status is SshAgentStatus.AgentUnavailable
                 ? AgentDownStatus()
                 : result.Message;
@@ -319,7 +376,13 @@ internal sealed class AgentSession : INotifyPropertyChanged
         }
 
         SetAvailability(result.Status);
+        ApplyListed(result.Ok ? result.Value ?? [] : []);
+        await UnloadOverdueAsync().ConfigureAwait(true);
+        return true;
+    }
 
+    private void ApplyListed(IReadOnlyList<SshIdentity> loaded)
+    {
         var loadedSet = loaded.Select(i => i.Fingerprint).ToHashSet(StringComparer.Ordinal);
         _store.KeepOnly(loadedSet);
 
@@ -334,7 +397,48 @@ internal sealed class AgentSession : INotifyPropertyChanged
 
         _store.Persist();
         ApplyRows(OrderRows(loaded));
-        return true;
+        ApplyStoredExpiry();
+        EnsureTimer();
+    }
+
+    private void ApplyStoredExpiry()
+    {
+        foreach (var identity in Identities)
+        {
+            var stored = _store.TryGet(identity.Fingerprint);
+            identity.ExpiresAt = stored?.ExpiresAtUtc;
+        }
+    }
+
+    private async Task UnloadOverdueAsync()
+    {
+        var now = _time.GetUtcNow();
+        var due = Identities
+            .Where(i => i.ExpiresAt is { } exp && exp <= now)
+            .Select(i => new ExpirySnapshot(i.Fingerprint, i.LoadGeneration, i.ExpiresAt!.Value))
+            .ToList();
+
+        foreach (var captured in due)
+        {
+            var current = FindIdentity(captured.Fingerprint);
+            if (current is null
+                || current.LoadGeneration != captured.LoadGeneration
+                || current.ExpiresAt is not { } exp
+                || exp > now)
+                continue;
+
+            var removed = await RemoveLoadedAsync(current).ConfigureAwait(true);
+            if (!removed.Ok)
+            {
+                _expireFail.Add((captured.Fingerprint, captured.LoadGeneration));
+                StatusText = removed.Message;
+                continue;
+            }
+
+            _expireFail.Remove((captured.Fingerprint, captured.LoadGeneration));
+            _store.Remove(current.Fingerprint);
+            DropRow(current.Fingerprint);
+        }
     }
 
     private List<SshIdentity> OrderRows(IReadOnlyList<SshIdentity> loaded)
@@ -383,7 +487,7 @@ internal sealed class AgentSession : INotifyPropertyChanged
                 Identities.Move(existingIndex, i);
         }
 
-        LoadedCount = rows.Count;
+        LoadedCount = Identities.Count;
         OnPropertyChanged(nameof(HasKeys));
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(ShowNoKeysHint));
@@ -400,6 +504,12 @@ internal sealed class AgentSession : INotifyPropertyChanged
         return -1;
     }
 
+    private SshIdentity? FindIdentity(string fingerprint)
+    {
+        var index = IndexOfFingerprint(fingerprint);
+        return index < 0 ? null : Identities[index];
+    }
+
     private static void MergeRow(SshIdentity target, SshIdentity source)
     {
         target.Comment = source.Comment;
@@ -412,7 +522,8 @@ internal sealed class AgentSession : INotifyPropertyChanged
     private async Task<SshAgentResult> RemoveLoadedAsync(SshIdentity identity)
     {
         var path = ResolveExistingPath(identity);
-        if (!string.IsNullOrWhiteSpace(path))
+        if (!string.IsNullOrWhiteSpace(path)
+            && await FingerprintMatchesAsync(path, identity.Fingerprint).ConfigureAwait(true))
             return await _client.RemoveAsync(path).ConfigureAwait(true);
 
         var line = await FindPublicKeyLineAsync(identity).ConfigureAwait(true);
@@ -420,6 +531,13 @@ internal sealed class AgentSession : INotifyPropertyChanged
             return SshAgentResult.Fail("Could not unload the key from the agent.");
 
         return await RemoveViaPublicLineAsync(line).ConfigureAwait(true);
+    }
+
+    private async Task<bool> FingerprintMatchesAsync(string path, string fingerprint)
+    {
+        var printed = await _keygen.FingerprintAsync(path).ConfigureAwait(true);
+        return printed is { Ok: true, Value: { } found }
+               && string.Equals(found.Fingerprint, fingerprint, StringComparison.Ordinal);
     }
 
     private async Task<string?> FindPublicKeyLineAsync(SshIdentity identity)
@@ -431,7 +549,8 @@ internal sealed class AgentSession : INotifyPropertyChanged
             if (File.Exists(pub))
             {
                 var fromFile = ReadFirstLine(pub);
-                if (!string.IsNullOrWhiteSpace(fromFile))
+                if (!string.IsNullOrWhiteSpace(fromFile)
+                    && await FingerprintMatchesAsync(pub, identity.Fingerprint).ConfigureAwait(true))
                     return fromFile;
             }
         }
@@ -482,6 +601,109 @@ internal sealed class AgentSession : INotifyPropertyChanged
         }
 
         return null;
+    }
+
+    private async Task PersistExpiryForFileAsync(string path, TimeSpan? lifetime)
+    {
+        var printed = await _keygen.FingerprintAsync(path).ConfigureAwait(true);
+        if (printed is not { Ok: true, Value: { } identity })
+            return;
+
+        _store.Upsert(identity, path);
+        _store.SetExpiry(identity.Fingerprint, ExpiresAtFrom(lifetime));
+    }
+
+    private async Task StampLoadedAsync(string path, TimeSpan? lifetime)
+    {
+        var printed = await _keygen.FingerprintAsync(path).ConfigureAwait(true);
+        if (printed is not { Ok: true, Value: { } printedIdentity })
+            return;
+
+        var identity = FindIdentity(printedIdentity.Fingerprint);
+        if (identity is null)
+            return;
+
+        identity.Path = path;
+        identity.ExpiresAt = ExpiresAtFrom(lifetime);
+        identity.LoadGeneration++;
+        _expireFail.Remove((identity.Fingerprint, identity.LoadGeneration - 1));
+        _store.Upsert(identity, path);
+        _store.SetExpiry(identity.Fingerprint, identity.ExpiresAt);
+        EnsureTimer();
+    }
+
+    private DateTimeOffset? ExpiresAtFrom(TimeSpan? lifetime) =>
+        lifetime is { } duration && duration >= TimeSpan.FromSeconds(1)
+            ? _time.GetUtcNow().ToOffset(TimeSpan.Zero) + duration
+            : null;
+
+    private void DropRow(string fingerprint)
+    {
+        var index = IndexOfFingerprint(fingerprint);
+        if (index < 0)
+            return;
+        Identities.RemoveAt(index);
+        LoadedCount = Identities.Count;
+        OnPropertyChanged(nameof(HasKeys));
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(ShowNoKeysHint));
+    }
+
+    private void EnsureTimer()
+    {
+        if (_timer is not null || _disposed)
+            return;
+        if (!Identities.Any(i => i.ExpiresAt is not null))
+            return;
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+            return;
+
+        void Create()
+        {
+            if (_timer is not null || _disposed)
+                return;
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+            _timer.Tick += OnExpiryTick;
+            _timer.Start();
+        }
+
+        if (dispatcher.CheckAccess())
+            Create();
+        else
+            dispatcher.BeginInvoke(Create);
+    }
+
+    private void StopTimer()
+    {
+        if (_timer is null)
+            return;
+        _timer.Stop();
+        _timer.Tick -= OnExpiryTick;
+        _timer = null;
+    }
+
+    private void OnExpiryTick(object? sender, EventArgs e)
+    {
+        foreach (var identity in Identities)
+        {
+            if (identity.ExpiresAt is not null)
+                identity.NotifyExpiryClock();
+        }
+
+        var now = _time.GetUtcNow();
+        foreach (var identity in Identities)
+        {
+            if (identity.ExpiresAt is not { } exp || exp > now)
+                continue;
+            if (_expireFail.Contains((identity.Fingerprint, identity.LoadGeneration)))
+                continue;
+
+            var snapshot = new ExpirySnapshot(identity.Fingerprint, identity.LoadGeneration, exp);
+            _ = TryExpireAsync(snapshot);
+            break;
+        }
     }
 
     private void SetOutcome(bool ok, string failMessage, bool listed, string successText)
@@ -565,9 +787,23 @@ internal sealed class AgentSession : INotifyPropertyChanged
         }
     }
 
+    private static string UnloadLabel(SshIdentity identity)
+    {
+        if (!string.IsNullOrWhiteSpace(identity.Path))
+            return Path.GetFileName(identity.Path);
+        if (!string.IsNullOrWhiteSpace(identity.Comment))
+        {
+            var name = Path.GetFileName(identity.Comment);
+            if (!string.IsNullOrWhiteSpace(name) && name != identity.Comment)
+                return name;
+        }
+
+        return "the key";
+    }
+
     private static string? PromptPassphrase(string keyPath)
     {
-        var owner = System.Windows.Application.Current?.MainWindow;
+        var owner = Application.Current?.MainWindow;
         var dialog = new PassphraseWindow("Enter the passphrase for " + Path.GetFileName(keyPath) + ".");
         if (owner is { IsVisible: true })
         {
@@ -605,4 +841,5 @@ internal sealed record CreateKeyRequest(
     string Path,
     string Comment,
     string Passphrase,
-    bool LoadIntoAgent);
+    bool LoadIntoAgent,
+    TimeSpan? Lifetime);

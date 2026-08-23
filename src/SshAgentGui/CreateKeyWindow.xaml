@@ -25,6 +25,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="100"/>
@@ -67,10 +68,17 @@
         <CheckBox x:Name="LoadBox" Grid.Row="7" Grid.Column="1" Grid.ColumnSpan="2"
                   Margin="0,4,0,0" Content="Load into agent now" IsChecked="True"/>
 
-        <TextBlock x:Name="ErrorText" Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="3"
+        <Label Grid.Row="8" Grid.Column="0" Content="Auto-unload"
+               IsEnabled="{Binding IsChecked, ElementName=LoadBox}"/>
+        <ComboBox x:Name="LifetimeBox" Grid.Row="8" Grid.Column="1" Grid.ColumnSpan="2"
+                  Margin="0,0,0,10" SelectedIndex="0" DisplayMemberPath="Label"
+                  IsEnabled="{Binding IsChecked, ElementName=LoadBox}"
+                  ToolTip="Windows ssh-agent ignores key lifetimes. This app may unload the key while it is running."/>
+
+        <TextBlock x:Name="ErrorText" Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="3"
                    Margin="0,12,0,0" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap"/>
 
-        <StackPanel Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="3"
+        <StackPanel Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="3"
                     Orientation="Horizontal" HorizontalAlignment="Right">
             <Button IsCancel="True" Margin="0,0,8,0">
                 <StackPanel Orientation="Horizontal">

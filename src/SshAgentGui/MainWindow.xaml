@@ -51,6 +51,16 @@
                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                         </StackPanel>
                     </Button>
+                    <TextBlock Text="Auto-unload" VerticalAlignment="Center" Margin="16,0,8,0"
+                               Foreground="{StaticResource MutedBrush}"/>
+                    <ComboBox x:Name="LifetimeBox"
+                              MinHeight="34"
+                              Width="220"
+                              VerticalAlignment="Center"
+                              SelectedIndex="0"
+                              DisplayMemberPath="Label"
+                              IsEnabled="{Binding IsIdle}"
+                              ToolTip="Windows ssh-agent ignores key lifetimes. This app may unload the key while it is running."/>
                 </StackPanel>
                 <Button Grid.Column="1"
                         Style="{StaticResource CountChip}"
@@ -107,6 +117,7 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" MinWidth="120"/>
@@ -145,6 +156,14 @@
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
                                                Margin="0,4,0,0"/>
+                                    <TextBlock Grid.Row="2"
+                                               Text="{Binding ExpiryText}"
+                                               Visibility="{Binding HasExpiry, Converter={StaticResource BoolToVis}}"
+                                               Foreground="{StaticResource MutedBrush}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,2,0,0"/>
                                 </Grid>
                             </Border>
                         </DataTemplate>

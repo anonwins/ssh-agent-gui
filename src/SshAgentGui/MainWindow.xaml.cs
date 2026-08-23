@@ -15,6 +15,8 @@ public partial class MainWindow : Window
         _session = session;
         DataContext = session;
         InitializeComponent();
+        LifetimeBox.ItemsSource = KeyLifetime.Presets;
+        LifetimeBox.SelectedIndex = 0;
     }
 
     public void RestoreFromTray()
@@ -128,7 +130,8 @@ public partial class MainWindow : Window
         var path = KeyFileDialog.OpenExisting("Load key");
         if (path is null)
             return;
-        await _session.AddKeyAsync(path).ConfigureAwait(true);
+        var lifetime = LifetimeBox.SelectedItem as KeyLifetime;
+        await _session.AddKeyAsync(path, lifetime?.Duration).ConfigureAwait(true);
     }
 
     private async void OnCreateKeyClick(object sender, RoutedEventArgs e)

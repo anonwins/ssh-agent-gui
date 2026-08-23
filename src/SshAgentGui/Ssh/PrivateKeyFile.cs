@@ -4,10 +4,23 @@ namespace SshAgentGui.Ssh;
 
 internal static class PrivateKeyFile
 {
-    public static bool LooksEncrypted(string path)
+    public static bool LooksEncrypted(string path) =>
+        File.Exists(path) && Inspect(path) != EncryptionState.Clear;
+
+    public static bool TryConfirmEncrypted(string path) =>
+        Inspect(path) == EncryptionState.Encrypted;
+
+    private enum EncryptionState
+    {
+        Clear,
+        Encrypted,
+        Unknown,
+    }
+
+    private static EncryptionState Inspect(string path)
     {
         if (!File.Exists(path))
-            return false;
+            return EncryptionState.Unknown;
 
         string text;
         try
@@ -16,24 +29,24 @@ internal static class PrivateKeyFile
         }
         catch (IOException)
         {
-            return true;
+            return EncryptionState.Unknown;
         }
 
         if (text.Contains("ENCRYPTED", StringComparison.OrdinalIgnoreCase))
-            return true;
+            return EncryptionState.Encrypted;
 
         var payload = ExtractPemPayload(text, "OPENSSH PRIVATE KEY");
         if (payload is null)
-            return false;
+            return EncryptionState.Clear;
 
         try
         {
             var data = Convert.FromBase64String(payload);
-            return OpenSshBlobEncrypted(data);
+            return OpenSshBlobState(data);
         }
         catch (FormatException)
         {
-            return true;
+            return EncryptionState.Unknown;
         }
     }
 
@@ -51,16 +64,18 @@ internal static class PrivateKeyFile
         return text[start..stop].Replace("\r", "").Replace("\n", "").Trim();
     }
 
-    private static bool OpenSshBlobEncrypted(byte[] data)
+    private static EncryptionState OpenSshBlobState(byte[] data)
     {
         ReadOnlySpan<byte> magic = "openssh-key-v1\0"u8;
         if (data.Length < magic.Length + 8 || !data.AsSpan().StartsWith(magic))
-            return true;
+            return EncryptionState.Unknown;
 
         var offset = magic.Length;
         if (!TryReadSshString(data, ref offset, out var cipher))
-            return true;
-        return !string.Equals(cipher, "none", StringComparison.Ordinal);
+            return EncryptionState.Unknown;
+        return string.Equals(cipher, "none", StringComparison.Ordinal)
+            ? EncryptionState.Clear
+            : EncryptionState.Encrypted;
     }
 
     private static bool TryReadSshString(byte[] data, ref int offset, out string value)

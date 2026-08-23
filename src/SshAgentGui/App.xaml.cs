@@ -33,6 +33,7 @@ public partial class App : System.Windows.Application
         }
 
         _single = single;
+        AppPaths.EnsureDirectory();
         UiSettings.Load();
         _session = new AgentSession();
         _main = new MainWindow(_session);
@@ -49,6 +50,7 @@ public partial class App : System.Windows.Application
 
     private void App_OnExit(object sender, ExitEventArgs e)
     {
+        _session?.Dispose();
         _tray?.Dispose();
         _single?.Dispose();
     }
