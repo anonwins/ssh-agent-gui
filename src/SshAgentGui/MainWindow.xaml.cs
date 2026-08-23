@@ -120,6 +120,9 @@ public partial class MainWindow : Window
     private async void OnRefreshClick(object sender, RoutedEventArgs e) =>
         await _session.RefreshAsync().ConfigureAwait(true);
 
+    private async void OnStartAgentClick(object sender, RoutedEventArgs e) =>
+        await _session.StartAgentAsync().ConfigureAwait(true);
+
     private async void OnAddKeyClick(object sender, RoutedEventArgs e)
     {
         var path = KeyFileDialog.OpenExisting("Load key");

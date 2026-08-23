@@ -17,6 +17,12 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        if (StartAgentServiceMode.IsLaunch(e.Args))
+        {
+            Shutdown(StartAgentServiceMode.Run());
+            return;
+        }
+
         System.Windows.Forms.Application.EnableVisualStyles();
         System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
 

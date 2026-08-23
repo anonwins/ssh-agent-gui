@@ -62,7 +62,7 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
         if (SshAddOutputParser.IsEmptyAgent(text))
             return SshAgentResult<List<SshIdentity>>.Empty();
         if (SshAddOutputParser.IsAgentUnavailable(text))
-            return SshAgentResult<List<SshIdentity>>.Unavailable(UnavailableMessage(text));
+            return SshAgentResult<List<SshIdentity>>.Unavailable(UnavailableMessage());
 
         var rows = SshAddOutputParser.ParseList(output.Stdout);
         if (output.ExitCode == 0)
@@ -80,7 +80,7 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
         if (SshAddOutputParser.IsEmptyAgent(text))
             return SshAgentResult<List<string>>.Empty();
         if (SshAddOutputParser.IsAgentUnavailable(text))
-            return SshAgentResult<List<string>>.Unavailable(UnavailableMessage(text));
+            return SshAgentResult<List<string>>.Unavailable(UnavailableMessage());
 
         var rows = SshAddOutputParser.ParsePublicKeys(output.Stdout);
         if (output.ExitCode == 0 || rows.Count > 0)
@@ -93,7 +93,7 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
     {
         var text = output.Combined;
         if (SshAddOutputParser.IsAgentUnavailable(text))
-            return SshAgentResult.Unavailable(UnavailableMessage(text));
+            return SshAgentResult.Unavailable(UnavailableMessage());
         if (output.ExitCode == 0)
             return SshAgentResult.Success();
         if (successIfEmpty && SshAddOutputParser.IsEmptyAgent(text))
@@ -104,9 +104,6 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
     private static string MissingMessage() =>
         "Windows OpenSSH ssh-add.exe was not found. Install the OpenSSH Client optional feature.";
 
-    private static string UnavailableMessage(string detail)
-    {
-        var hint = "The OpenSSH Authentication Agent (ssh-agent) is not running. Start it from Services.";
-        return string.IsNullOrWhiteSpace(detail) ? hint : hint + Environment.NewLine + detail;
-    }
+    private static string UnavailableMessage() =>
+        "The OpenSSH Authentication Agent is not running.";
 }

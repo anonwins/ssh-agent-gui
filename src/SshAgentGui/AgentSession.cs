@@ -10,15 +10,26 @@ internal sealed class AgentSession : INotifyPropertyChanged
     private readonly ISshAgentClient _client;
     private readonly WindowsSshKeygen _keygen;
     private readonly TrackedKeyStore _store;
+    private readonly WindowsSshAgentService _service;
     private bool _isBusy;
     private string _statusText = "Starting…";
     private int _loadedCount;
+    private bool _isAgentUnavailable;
+    private bool _isBinaryMissing;
+    private bool _canStartAgent;
+    private SshAgentServiceState _serviceState = SshAgentServiceState.Stopped;
+    private string _agentDownDetail = "";
 
-    public AgentSession(ISshAgentClient? client = null, WindowsSshKeygen? keygen = null, TrackedKeyStore? store = null)
+    public AgentSession(
+        ISshAgentClient? client = null,
+        WindowsSshKeygen? keygen = null,
+        TrackedKeyStore? store = null,
+        WindowsSshAgentService? service = null)
     {
         _client = client ?? new WindowsOpenSshClient();
         _keygen = keygen ?? new WindowsSshKeygen();
         _store = store ?? new TrackedKeyStore();
+        _service = service ?? new WindowsSshAgentService();
         _store.Load();
     }
 
@@ -34,6 +45,7 @@ internal sealed class AgentSession : INotifyPropertyChanged
             _isBusy = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsIdle));
+            OnPropertyChanged(nameof(CanUseAgent));
         }
     }
 
@@ -65,11 +77,25 @@ internal sealed class AgentSession : INotifyPropertyChanged
     }
 
     public string LoadedCountText =>
-        LoadedCount == 1 ? "1 key loaded" : $"{LoadedCount} keys loaded";
+        IsAgentUnavailable ? "Agent not running"
+        : LoadedCount == 1 ? "1 key loaded"
+        : $"{LoadedCount} keys loaded";
 
     public bool HasKeys => Identities.Count > 0;
 
     public bool IsEmpty => Identities.Count == 0;
+
+    public bool IsAgentUnavailable => _isAgentUnavailable;
+
+    public bool IsBinaryMissing => _isBinaryMissing;
+
+    public bool ShowNoKeysHint => IsEmpty && !IsAgentUnavailable && !IsBinaryMissing;
+
+    public bool CanUseAgent => IsIdle && !IsAgentUnavailable && !IsBinaryMissing;
+
+    public bool CanStartAgent => _canStartAgent;
+
+    public string AgentDownDetail => _agentDownDetail;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -220,6 +246,48 @@ internal sealed class AgentSession : INotifyPropertyChanged
         }).ConfigureAwait(true);
     }
 
+    public async Task StartAgentAsync()
+    {
+        await WithBusy(async () =>
+        {
+            var state = await Task.Run(_service.Query).ConfigureAwait(true);
+            if (state is SshAgentServiceState.Missing or SshAgentServiceState.Disabled)
+            {
+                await RefreshCoreAsync().ConfigureAwait(true);
+                return false;
+            }
+
+            var didStart = false;
+            if (state != SshAgentServiceState.Running)
+            {
+                StatusText = "Starting the OpenSSH Authentication Agent…";
+                var started = await Task.Run(_service.TryStart).ConfigureAwait(true);
+                if (started.Kind == SshAgentServiceStartKind.NeedsElevation)
+                    started = await _service.TryStartElevatedAsync().ConfigureAwait(true);
+
+                if (started.Kind == SshAgentServiceStartKind.Cancelled)
+                {
+                    StatusText = started.Message;
+                    return false;
+                }
+
+                if (!started.Succeeded)
+                {
+                    await RefreshCoreAsync().ConfigureAwait(true);
+                    StatusText = started.Message;
+                    return false;
+                }
+
+                didStart = true;
+            }
+
+            var listed = await RefreshCoreAsync().ConfigureAwait(true);
+            if (listed)
+                StatusText = didStart ? "Agent started." : RefreshedStatus();
+            return listed;
+        }).ConfigureAwait(true);
+    }
+
     private void BindPath(string path)
     {
         foreach (var identity in Identities)
@@ -242,10 +310,15 @@ internal sealed class AgentSession : INotifyPropertyChanged
 
         if (!result.Ok && result.Status is not SshAgentStatus.Empty)
         {
+            SetAvailability(result.Status);
             ApplyRows(loaded);
-            StatusText = result.Message;
+            StatusText = result.Status is SshAgentStatus.AgentUnavailable
+                ? AgentDownStatus()
+                : result.Message;
             return false;
         }
+
+        SetAvailability(result.Status);
 
         var loadedSet = loaded.Select(i => i.Fingerprint).ToHashSet(StringComparer.Ordinal);
         _store.KeepOnly(loadedSet);
@@ -313,6 +386,7 @@ internal sealed class AgentSession : INotifyPropertyChanged
         LoadedCount = rows.Count;
         OnPropertyChanged(nameof(HasKeys));
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(ShowNoKeysHint));
     }
 
     private int IndexOfFingerprint(string fingerprint)
@@ -417,6 +491,62 @@ internal sealed class AgentSession : INotifyPropertyChanged
         else if (listed)
             StatusText = successText;
     }
+
+    private void SetAvailability(SshAgentStatus status)
+    {
+        var unavailable = status == SshAgentStatus.AgentUnavailable;
+        var missing = status == SshAgentStatus.BinaryMissing;
+        var serviceState = SshAgentServiceState.Stopped;
+        var canStart = false;
+        var detail = "";
+
+        if (unavailable)
+        {
+            serviceState = _service.Query();
+            canStart = serviceState is SshAgentServiceState.Stopped or SshAgentServiceState.Running;
+            detail = serviceState switch
+            {
+                SshAgentServiceState.Disabled =>
+                    "The service is disabled. Set startup to Manual or Automatic in Services, then start it.",
+                SshAgentServiceState.Missing =>
+                    "The OpenSSH Authentication Agent service was not found.",
+                _ => "Start the Windows ssh-agent service to load and copy keys.",
+            };
+        }
+
+        var changed = _isAgentUnavailable != unavailable
+            || _isBinaryMissing != missing
+            || _canStartAgent != canStart
+            || _agentDownDetail != detail
+            || _serviceState != serviceState;
+
+        _isAgentUnavailable = unavailable;
+        _isBinaryMissing = missing;
+        _canStartAgent = canStart;
+        _agentDownDetail = detail;
+        _serviceState = serviceState;
+
+        if (!changed)
+            return;
+
+        OnPropertyChanged(nameof(IsAgentUnavailable));
+        OnPropertyChanged(nameof(IsBinaryMissing));
+        OnPropertyChanged(nameof(ShowNoKeysHint));
+        OnPropertyChanged(nameof(CanUseAgent));
+        OnPropertyChanged(nameof(CanStartAgent));
+        OnPropertyChanged(nameof(AgentDownDetail));
+        OnPropertyChanged(nameof(LoadedCountText));
+    }
+
+    private string AgentDownStatus() =>
+        _serviceState switch
+        {
+            SshAgentServiceState.Disabled =>
+                "The OpenSSH Authentication Agent service is disabled. Set it to Manual or Automatic in Services, then start it.",
+            SshAgentServiceState.Missing =>
+                "The OpenSSH Authentication Agent service was not found.",
+            _ => "The OpenSSH Authentication Agent is not running.",
+        };
 
     private string RefreshedStatus() =>
         LoadedCount == 0 ? "Refreshed — no keys loaded"

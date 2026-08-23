@@ -42,7 +42,10 @@ internal sealed class TrayController : IDisposable
 
     private void OnSessionPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is not (nameof(AgentSession.LoadedCount) or nameof(AgentSession.LoadedCountText)))
+        if (e.PropertyName is not (
+            nameof(AgentSession.LoadedCount)
+            or nameof(AgentSession.LoadedCountText)
+            or nameof(AgentSession.IsAgentUnavailable)))
             return;
 
         void Update()

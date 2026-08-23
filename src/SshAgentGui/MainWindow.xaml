@@ -37,14 +37,14 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Orientation="Horizontal">
-                    <Button Style="{StaticResource PrimaryButton}" Click="OnCreateKeyClick" IsEnabled="{Binding IsIdle}" Margin="0,0,8,0">
+                    <Button Style="{StaticResource PrimaryButton}" Click="OnCreateKeyClick" IsEnabled="{Binding CanUseAgent}" Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource Glyph}" Text="&#xE948;"/>
                             <TextBlock Text="Create key" Margin="8,0,0,0" VerticalAlignment="Center"
                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                         </StackPanel>
                     </Button>
-                    <Button Click="OnAddKeyClick" IsEnabled="{Binding IsIdle}">
+                    <Button Click="OnAddKeyClick" IsEnabled="{Binding CanUseAgent}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource Glyph}" Text="&#xE8E5;"/>
                             <TextBlock Text="Load key" Margin="8,0,0,0" VerticalAlignment="Center"
@@ -55,7 +55,7 @@
                 <Button Grid.Column="1"
                         Style="{StaticResource CountChip}"
                         Click="OnRefreshClick"
-                        IsEnabled="{Binding IsIdle}"
+                        IsEnabled="{Binding CanUseAgent}"
                         ToolTip="Refresh"
                         HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
@@ -156,7 +156,61 @@
                         <Style TargetType="Border" BasedOn="{StaticResource Card}">
                             <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsEmpty}" Value="True">
+                                <DataTrigger Binding="{Binding IsAgentUnavailable}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel HorizontalAlignment="Center" MaxWidth="420">
+                        <TextBlock Style="{StaticResource GlyphLarge}" Text="&#xE7BA;"
+                                   HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                        <TextBlock Text="Agent not running" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding AgentDownDetail}"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                        <Button Style="{StaticResource PrimaryButton}"
+                                Click="OnStartAgentClick"
+                                IsEnabled="{Binding IsIdle}"
+                                Visibility="{Binding CanStartAgent, Converter={StaticResource BoolToVis}}"
+                                HorizontalAlignment="Center"
+                                Margin="0,16,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Glyph}" Text="&#xE768;"/>
+                                <TextBlock Text="Start agent" Margin="8,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Border>
+
+                <Border VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="32">
+                    <Border.Style>
+                        <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsBinaryMissing}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel HorizontalAlignment="Center" MaxWidth="420">
+                        <TextBlock Style="{StaticResource GlyphLarge}" Text="&#xE783;"
+                                   HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                        <TextBlock Text="OpenSSH not found" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Windows OpenSSH ssh-add.exe was not found. Install the OpenSSH Client optional feature."
+                                   Foreground="{StaticResource MutedBrush}"
+                                   TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="32">
+                    <Border.Style>
+                        <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ShowNoKeysHint}" Value="True">
                                     <Setter Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </Style.Triggers>

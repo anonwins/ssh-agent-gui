@@ -9,7 +9,7 @@ One instance. A second launch just brings the existing window forward.
 ## Requirements
 
 - Windows 10/11, OpenSSH Client installed
-- The `ssh-agent` service running
+- The `ssh-agent` service present (Manual is fine). If it is stopped, the app can start it; Windows may prompt for elevation. A Disabled service has to be enabled in Services first.
 - .NET 9 to build
 
 ## Build
