@@ -10,7 +10,7 @@ One instance. A second launch just brings the existing window forward.
 
 ## Auto-unload is a GUI-enforced policy, not a Windows ssh-agent security guarantee
 
-The native Windows `ssh-agent` ignores `ssh-add -t`. While this app is running it may run `ssh-add -d` when the chosen Auto-unload time is due. That is session policy, not an agent-enforced lifetime.
+This app does not pass `ssh-add -t`. The Windows agent does not honor it, and passing it can fail the add. While the app is running it may run `ssh-add -d` when the chosen Auto-unload time is due. That is session policy, not an agent-enforced lifetime.
 
 It does **not** unload keys if the GUI is fully quit (the tray is enough to keep policy alive). Crashes, sleep, a killed process, a failed `ssh-add -d`, or another tool re-adding the same key can leave the agent holding the key.
 

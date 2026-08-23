@@ -53,17 +53,10 @@ internal static class OpenSshProcess
     public static async Task<ProcessOutput> RunAddAsync(
         string keyPath,
         string? passphrase,
-        TimeSpan? lifetime = null,
         CancellationToken cancellationToken = default)
     {
-        var args = new List<string>();
-        if (lifetime is { } life && life.TotalSeconds >= 1)
-        {
-            args.Add("-t");
-            args.Add(((int)Math.Ceiling(life.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture));
-        }
-
-        args.Add(keyPath);
+        // Do not pass -t: Windows ssh-agent rejects lifetime constraints and the add fails.
+        IReadOnlyList<string> args = [keyPath];
 
         if (passphrase is null)
         {

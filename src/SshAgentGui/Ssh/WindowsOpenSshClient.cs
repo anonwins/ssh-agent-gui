@@ -25,13 +25,12 @@ internal sealed class WindowsOpenSshClient : ISshAgentClient
     public async Task<SshAgentResult> AddAsync(
         string keyPath,
         string? passphrase = null,
-        TimeSpan? lifetime = null,
         CancellationToken cancellationToken = default)
     {
         if (OpenSshProcess.FindExe("ssh-add.exe") is null)
             return SshAgentResult.Missing(MissingMessage());
 
-        var output = await OpenSshProcess.RunAddAsync(keyPath, passphrase, lifetime, cancellationToken)
+        var output = await OpenSshProcess.RunAddAsync(keyPath, passphrase, cancellationToken)
             .ConfigureAwait(false);
         return ClassifyMutation(output, successIfEmpty: false);
     }

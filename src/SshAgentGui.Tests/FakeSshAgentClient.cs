@@ -27,7 +27,6 @@ internal sealed class FakeSshAgentClient : ISshAgentClient
     public Task<SshAgentResult> AddAsync(
         string keyPath,
         string? passphrase = null,
-        TimeSpan? lifetime = null,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AddOverride ?? SshAgentResult.Success());
 

@@ -150,7 +150,7 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
                 }
             }
 
-            var result = await _client.AddAsync(path, passphrase, lifetime).ConfigureAwait(true);
+            var result = await _client.AddAsync(path, passphrase).ConfigureAwait(true);
             var listed = await AfterAddReconcileAsync(path, lifetime, result.Ok).ConfigureAwait(true);
             BindNewLoaded(before, path);
             SetOutcome(result.Ok, result.Message, listed, "Loaded " + Path.GetFileName(path));
@@ -240,8 +240,7 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
             {
                 var add = await _client.AddAsync(
                         path,
-                        string.IsNullOrEmpty(request.Passphrase) ? null : request.Passphrase,
-                        request.Lifetime)
+                        string.IsNullOrEmpty(request.Passphrase) ? null : request.Passphrase)
                     .ConfigureAwait(true);
                 if (add.Ok)
                     added = true;
