@@ -96,14 +96,16 @@ internal sealed class WindowsSshKeygen
     {
         if (PrivateKeyFile.TryConfirmEncrypted(path))
             return SshAgentResult.Success();
-        DeleteCreatedKey(path);
-        return SshAgentResult.Fail(OpenSshText.NotEncrypted);
+        return DeleteCreatedKey(path)
+            ? SshAgentResult.Fail(OpenSshText.NotEncrypted)
+            : SshAgentResult.Fail(OpenSshText.NotEncryptedCleanupFailed);
     }
 
-    internal static void DeleteCreatedKey(string path)
+    internal static bool DeleteCreatedKey(string path)
     {
         TryDelete(path);
         TryDelete(path + ".pub");
+        return !File.Exists(path) && !File.Exists(path + ".pub");
     }
 
     private static void TryDelete(string path)

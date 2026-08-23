@@ -151,12 +151,7 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
             }
 
             var result = await _client.AddAsync(path, passphrase, lifetime).ConfigureAwait(true);
-            if (result.Ok)
-                await PersistExpiryForFileAsync(path, lifetime).ConfigureAwait(true);
-
-            var listed = await RefreshCoreAsync().ConfigureAwait(true);
-            if (result.Ok)
-                await StampLoadedAsync(path, lifetime).ConfigureAwait(true);
+            var listed = await AfterAddReconcileAsync(path, lifetime, result.Ok).ConfigureAwait(true);
             BindNewLoaded(before, path);
             SetOutcome(result.Ok, result.Message, listed, "Loaded " + Path.GetFileName(path));
             return result.Ok;
@@ -249,17 +244,12 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
                         request.Lifetime)
                     .ConfigureAwait(true);
                 if (add.Ok)
-                {
                     added = true;
-                    await PersistExpiryForFileAsync(path, request.Lifetime).ConfigureAwait(true);
-                }
                 else
                     addFailed = "Key created, but it was not loaded into the agent. " + add.Message;
             }
 
-            var listed = await RefreshCoreAsync().ConfigureAwait(true);
-            if (added)
-                await StampLoadedAsync(path, request.Lifetime).ConfigureAwait(true);
+            var listed = await AfterAddReconcileAsync(path, request.Lifetime, added).ConfigureAwait(true);
             BindNewLoaded(before, path);
             BindPath(path);
             if (addFailed is not null)
@@ -363,7 +353,18 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
         }
     }
 
-    private async Task<bool> RefreshCoreAsync()
+    private async Task<bool> AfterAddReconcileAsync(string path, TimeSpan? lifetime, bool added)
+    {
+        if (!added)
+            return await RefreshCoreAsync().ConfigureAwait(true);
+
+        var listed = await RefreshCoreAsync(unloadOverdue: false).ConfigureAwait(true);
+        await StampLoadedAsync(path, lifetime).ConfigureAwait(true);
+        await UnloadOverdueAsync().ConfigureAwait(true);
+        return listed;
+    }
+
+    private async Task<bool> RefreshCoreAsync(bool unloadOverdue = true)
     {
         var result = await _client.ListAsync().ConfigureAwait(true);
         if (!result.Ok && result.Status is not SshAgentStatus.Empty)
@@ -377,7 +378,8 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
 
         SetAvailability(result.Status);
         ApplyListed(result.Ok ? result.Value ?? [] : []);
-        await UnloadOverdueAsync().ConfigureAwait(true);
+        if (unloadOverdue)
+            await UnloadOverdueAsync().ConfigureAwait(true);
         return true;
     }
 
@@ -601,16 +603,6 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
         }
 
         return null;
-    }
-
-    private async Task PersistExpiryForFileAsync(string path, TimeSpan? lifetime)
-    {
-        var printed = await _keygen.FingerprintAsync(path).ConfigureAwait(true);
-        if (printed is not { Ok: true, Value: { } identity })
-            return;
-
-        _store.Upsert(identity, path);
-        _store.SetExpiry(identity.Fingerprint, ExpiresAtFrom(lifetime));
     }
 
     private async Task StampLoadedAsync(string path, TimeSpan? lifetime)

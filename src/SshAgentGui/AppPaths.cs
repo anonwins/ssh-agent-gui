@@ -13,24 +13,12 @@ internal static class AppPaths
 
     public static string UiFile => Path.Combine(Directory, "ui.json");
 
-    public static string? Executable { get; } = TryResolveExecutable();
+    public static string? Executable => ResolveAskPassExecutable();
 
-    public static void EnsureDirectory()
-    {
-        System.IO.Directory.CreateDirectory(Directory);
-        try
-        {
-            ApplyDirectoryAcl(Directory);
-            ApplyFileAcl(KeysFile);
-            ApplyFileAcl(UiFile);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SystemException)
-        {
-            // ACL is defense-in-depth; the app still runs if we cannot tighten the DACL.
-        }
-    }
+    public static bool TryEnsureDirectory() =>
+        TryProtectDirectory(Directory, KeysFile, UiFile);
 
-    internal static string? TryResolveExecutable()
+    internal static string? ResolveAskPassExecutable()
     {
         var processPath = Environment.ProcessPath;
         if (!string.IsNullOrWhiteSpace(processPath))
@@ -38,17 +26,16 @@ internal static class AppPaths
             var resolved = ValidateGuiExecutable(processPath);
             if (resolved is not null)
                 return resolved;
-
             if (IsDotNetHost(processPath))
-                return ValidateGuiExecutable(Path.Combine(AppContext.BaseDirectory, "SshAgentGui.exe"));
+                return AdjacentGuiExecutable();
         }
 
-        return ValidateGuiExecutable(Path.Combine(AppContext.BaseDirectory, "SshAgentGui.exe"));
+        return AdjacentGuiExecutable();
     }
 
     internal static string? ValidateGuiExecutable(string path)
     {
-        if (string.IsNullOrWhiteSpace(path))
+        if (string.IsNullOrWhiteSpace(path) || !Path.IsPathFullyQualified(path))
             return null;
 
         string full;
@@ -61,30 +48,71 @@ internal static class AppPaths
             return null;
         }
 
-        if (!Path.IsPathRooted(full) || !File.Exists(full) || IsDotNetHost(full))
+        if (!File.Exists(full) || IsDotNetHost(full))
             return null;
 
         return full;
     }
 
+    internal static bool TryProtectDirectory(string directory, params string[] existingFiles)
+    {
+        try
+        {
+            System.IO.Directory.CreateDirectory(directory);
+            if (!TryApplyDirectoryAcl(directory))
+                return false;
+
+            foreach (var file in existingFiles)
+            {
+                if (string.IsNullOrWhiteSpace(file) || !File.Exists(file))
+                    continue;
+                if (!TryApplyFileAcl(file))
+                    return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SystemException)
+        {
+            return false;
+        }
+    }
+
+    private static string? AdjacentGuiExecutable()
+    {
+        string candidate;
+        try
+        {
+            candidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "SshAgentGui.exe"));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        return ValidateGuiExecutable(candidate);
+    }
+
     private static bool IsDotNetHost(string path) =>
         Path.GetFileName(path).Equals("dotnet.exe", StringComparison.OrdinalIgnoreCase);
 
-    private static void ApplyDirectoryAcl(string path)
+    private static bool TryApplyDirectoryAcl(string path)
     {
         var user = WindowsIdentity.GetCurrent().User;
         if (user is null)
-            return;
+            return false;
 
         var security = new DirectorySecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-        AddRule(security, user, FileSystemRights.Modify);
-        AddRule(security, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl);
-        AddRule(security, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl);
-        new DirectoryInfo(path).SetAccessControl(security);
+        AddDirectoryRule(security, user, FileSystemRights.Modify);
+        AddDirectoryRule(security, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl);
+        AddDirectoryRule(security, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl);
+        var info = new DirectoryInfo(path);
+        info.SetAccessControl(security);
+        return IsProtectedDacl(info.GetAccessControl());
     }
 
-    private static void AddRule(DirectorySecurity security, IdentityReference id, FileSystemRights rights) =>
+    private static void AddDirectoryRule(DirectorySecurity security, IdentityReference id, FileSystemRights rights) =>
         security.AddAccessRule(new FileSystemAccessRule(
             id,
             rights,
@@ -92,14 +120,11 @@ internal static class AppPaths
             PropagationFlags.None,
             AccessControlType.Allow));
 
-    private static void ApplyFileAcl(string path)
+    private static bool TryApplyFileAcl(string path)
     {
-        if (!File.Exists(path))
-            return;
-
         var user = WindowsIdentity.GetCurrent().User;
         if (user is null)
-            return;
+            return false;
 
         var security = new FileSecurity();
         security.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
@@ -112,6 +137,28 @@ internal static class AppPaths
             new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
             FileSystemRights.FullControl,
             AccessControlType.Allow));
-        new FileInfo(path).SetAccessControl(security);
+        var info = new FileInfo(path);
+        info.SetAccessControl(security);
+        return IsProtectedDacl(info.GetAccessControl());
+    }
+
+    private static bool IsProtectedDacl(FileSystemSecurity security)
+    {
+        if (!security.AreAccessRulesProtected)
+            return false;
+
+        var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+        var users = new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null);
+        var authenticated = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
+        foreach (FileSystemAccessRule rule in security.GetAccessRules(true, false, typeof(SecurityIdentifier)))
+        {
+            if (rule.AccessControlType != AccessControlType.Allow)
+                continue;
+            var sid = (SecurityIdentifier)rule.IdentityReference;
+            if (sid.Equals(everyone) || sid.Equals(users) || sid.Equals(authenticated))
+                return false;
+        }
+
+        return true;
     }
 }

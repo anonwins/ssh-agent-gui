@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.ServiceProcess;
+using SshAgentGui;
 
 namespace SshAgentGui.Ssh;
 
@@ -111,8 +112,8 @@ internal sealed class WindowsSshAgentService
     public async Task<SshAgentServiceStartResult> TryStartElevatedAsync(
         CancellationToken cancellationToken = default)
     {
-        var self = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(self) || !File.Exists(self))
+        var self = AppPaths.ResolveAskPassExecutable();
+        if (string.IsNullOrEmpty(self))
             return SshAgentServiceStartResult.Failed("Could not locate this program to start the service.");
 
         var psi = new ProcessStartInfo

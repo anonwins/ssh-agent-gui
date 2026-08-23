@@ -33,7 +33,17 @@ public partial class App : System.Windows.Application
         }
 
         _single = single;
-        AppPaths.EnsureDirectory();
+        if (!AppPaths.TryEnsureDirectory())
+        {
+            MessageBox.Show(
+                "Could not protect application data. The app will not start.",
+                "SSH Agent GUI",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown();
+            return;
+        }
+
         UiSettings.Load();
         _session = new AgentSession();
         _main = new MainWindow(_session);

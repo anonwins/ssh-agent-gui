@@ -81,15 +81,6 @@ internal static class OpenSshProcess
         string passphrase,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(AppPaths.Executable))
-        {
-            return new ProcessOutput
-            {
-                ExitCode = -1,
-                Stderr = "Could not locate this program to unlock the key.",
-            };
-        }
-
         return await RunCoreAsync(exeName, arguments, Guid.NewGuid().ToString("n"), passphrase, configure: null, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -115,7 +106,9 @@ internal static class OpenSshProcess
             return;
         }
 
-        psi.Environment["SSH_ASKPASS"] = askPassExe ?? "";
+        if (string.IsNullOrEmpty(askPassExe))
+            throw new ArgumentException("Askpass executable is required when a pipe is used.", nameof(askPassExe));
+        psi.Environment["SSH_ASKPASS"] = askPassExe;
         psi.Environment["SSH_ASKPASS_REQUIRE"] = "force";
         // Windows OpenSSH 9.5.4.1 hangs without DISPLAY when askpass is forced; this is not a Unix DISPLAY requirement.
         psi.Environment["DISPLAY"] = "1";
@@ -150,14 +143,18 @@ internal static class OpenSshProcess
 
         try
         {
-            var askPass = pipeGuid is null ? null : AppPaths.Executable;
-            if (pipeGuid is not null && string.IsNullOrEmpty(askPass))
+            string? askPass = null;
+            if (pipeGuid is not null)
             {
-                return new ProcessOutput
+                askPass = AppPaths.ResolveAskPassExecutable();
+                if (string.IsNullOrEmpty(askPass))
                 {
-                    ExitCode = -1,
-                    Stderr = "Could not locate this program to unlock the key.",
-                };
+                    return new ProcessOutput
+                    {
+                        ExitCode = -1,
+                        Stderr = "Could not locate this program to unlock the key.",
+                    };
+                }
             }
 
             if (pipeGuid is not null)

@@ -10,6 +10,7 @@ internal static class OpenSshText
     public const string UnusableKey = "That file is not a usable private key.";
     public const string InvalidLifetime = "The key lifetime is not valid.";
     public const string NotEncrypted = "The new key was not encrypted. It was removed.";
+    public const string NotEncryptedCleanupFailed = "The new key was not encrypted, and it could not be removed.";
 
     public static string ForAdd(string text, int exitCode, bool successIfEmpty)
     {
