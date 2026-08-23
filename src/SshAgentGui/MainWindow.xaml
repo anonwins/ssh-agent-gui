@@ -55,10 +55,8 @@
                                Foreground="{StaticResource MutedBrush}"/>
                     <ComboBox x:Name="LifetimeBox"
                               MinHeight="34"
-                              Width="220"
                               VerticalAlignment="Center"
                               SelectedIndex="0"
-                              DisplayMemberPath="Label"
                               IsEnabled="{Binding IsIdle}"
                               ToolTip="Windows ssh-agent ignores key lifetimes. This app may unload the key while it is running."/>
                 </StackPanel>
