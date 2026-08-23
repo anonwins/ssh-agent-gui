@@ -20,6 +20,9 @@ internal sealed class TrackedKeyRecord
 
     [JsonPropertyName("expiresAtUtc")]
     public DateTimeOffset? ExpiresAtUtc { get; set; }
+
+    [JsonPropertyName("lifetimeSeconds")]
+    public int? LifetimeSeconds { get; set; }
 }
 
 internal sealed class TrackedKeyStore
@@ -78,13 +81,15 @@ internal sealed class TrackedKeyStore
             Type = FirstNonEmpty(type, existing?.Type),
             Bits = bits != 0 ? bits : existing?.Bits ?? 0,
             ExpiresAtUtc = existing?.ExpiresAtUtc,
+            LifetimeSeconds = existing?.LifetimeSeconds,
         };
         if (existing is not null
             && existing.Path == next.Path
             && existing.Comment == next.Comment
             && existing.Type == next.Type
             && existing.Bits == next.Bits
-            && existing.ExpiresAtUtc == next.ExpiresAtUtc)
+            && existing.ExpiresAtUtc == next.ExpiresAtUtc
+            && existing.LifetimeSeconds == next.LifetimeSeconds)
             return;
 
         _items[fingerprint] = next;
@@ -93,7 +98,7 @@ internal sealed class TrackedKeyStore
             Save();
     }
 
-    public void SetExpiry(string fingerprint, DateTimeOffset? expiresAtUtc)
+    public void SetExpiry(string fingerprint, DateTimeOffset? expiresAtUtc, TimeSpan? lifetime)
     {
         if (!_items.TryGetValue(fingerprint, out var existing))
         {
@@ -101,10 +106,17 @@ internal sealed class TrackedKeyStore
             _items[fingerprint] = existing;
         }
 
-        if (existing.ExpiresAtUtc == expiresAtUtc)
+        int? seconds = lifetime is { } duration && duration >= TimeSpan.FromSeconds(1)
+            ? (int)duration.TotalSeconds
+            : null;
+        if (lifetime is null)
+            expiresAtUtc = null;
+
+        if (existing.ExpiresAtUtc == expiresAtUtc && existing.LifetimeSeconds == seconds)
             return;
 
         existing.ExpiresAtUtc = expiresAtUtc;
+        existing.LifetimeSeconds = seconds;
         _dirty = true;
         Save();
     }

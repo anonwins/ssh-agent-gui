@@ -160,4 +160,12 @@ public partial class MainWindow : Window
 
         await _session.UnloadAsync(identity).ConfigureAwait(true);
     }
+
+    private async void OnReloadClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SshIdentity identity })
+            return;
+
+        await _session.ReloadKeyAsync(identity).ConfigureAwait(true);
+    }
 }

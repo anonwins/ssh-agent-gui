@@ -158,6 +158,24 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
         }).ConfigureAwait(true);
     }
 
+    public Task ReloadKeyAsync(SshIdentity identity)
+    {
+        var path = ResolveExistingPath(identity);
+        if (path is null)
+        {
+            StatusText = OpenSshText.FileNotFound;
+            return Task.CompletedTask;
+        }
+
+        if (identity.Lifetime is not { } lifetime || lifetime < TimeSpan.FromSeconds(1))
+        {
+            StatusText = "Auto-unload duration is unknown. Load the key again.";
+            return Task.CompletedTask;
+        }
+
+        return AddKeyAsync(path, lifetime);
+    }
+
     public async Task<bool> UnloadAsync(SshIdentity identity)
     {
         return await WithBusy(async () =>
@@ -408,6 +426,9 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
         {
             var stored = _store.TryGet(identity.Fingerprint);
             identity.ExpiresAt = stored?.ExpiresAtUtc;
+            identity.Lifetime = stored?.LifetimeSeconds is { } seconds && seconds >= 1
+                ? TimeSpan.FromSeconds(seconds)
+                : null;
         }
     }
 
@@ -615,11 +636,12 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
             return;
 
         identity.Path = path;
+        identity.Lifetime = lifetime;
         identity.ExpiresAt = ExpiresAtFrom(lifetime);
         identity.LoadGeneration++;
         _expireFail.Remove((identity.Fingerprint, identity.LoadGeneration - 1));
         _store.Upsert(identity, path);
-        _store.SetExpiry(identity.Fingerprint, identity.ExpiresAt);
+        _store.SetExpiry(identity.Fingerprint, identity.ExpiresAt, lifetime);
         EnsureTimer();
     }
 
@@ -642,9 +664,15 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
 
     private void EnsureTimer()
     {
-        if (_timer is not null || _disposed)
+        if (_disposed)
             return;
         if (!Identities.Any(i => i.ExpiresAt is not null))
+        {
+            StopTimer();
+            return;
+        }
+
+        if (_timer is not null)
             return;
 
         var dispatcher = Application.Current?.Dispatcher;
@@ -655,7 +683,9 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
         {
             if (_timer is not null || _disposed)
                 return;
-            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+            if (!Identities.Any(i => i.ExpiresAt is not null))
+                return;
+            _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _timer.Tick += OnExpiryTick;
             _timer.Start();
         }

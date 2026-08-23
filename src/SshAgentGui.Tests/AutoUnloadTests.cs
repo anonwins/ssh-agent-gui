@@ -11,9 +11,9 @@ public sealed class AutoUnloadTests
         var now = DateTimeOffset.Parse("2026-01-01T00:00:00Z");
         Assert.Equal("", SshIdentity.FormatExpiry(null, now));
         Assert.Equal("Expired", SshIdentity.FormatExpiry(now.AddMinutes(-1), now));
-        Assert.Equal("2h left", SshIdentity.FormatExpiry(now.AddHours(2.5), now));
-        Assert.Equal("25m left", SshIdentity.FormatExpiry(now.AddMinutes(25), now));
-        Assert.Equal("<1m left", SshIdentity.FormatExpiry(now.AddSeconds(30), now));
+        Assert.Equal("2:30:00", SshIdentity.FormatExpiry(now.AddHours(2.5), now));
+        Assert.Equal("25:00", SshIdentity.FormatExpiry(now.AddMinutes(25), now));
+        Assert.Equal("0:30", SshIdentity.FormatExpiry(now.AddSeconds(30), now));
     }
 
     [Fact]

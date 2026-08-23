@@ -67,10 +67,10 @@
                         ToolTip="Refresh"
                         HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Style="{StaticResource GlyphSmall}" Text="&#xE72C;"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding LoadedCountText}" Margin="8,0,0,0" VerticalAlignment="Center"
+                        <TextBlock Text="{Binding LoadedCountText}" VerticalAlignment="Center"
                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                        <TextBlock Style="{StaticResource GlyphSmall}" Text="&#xE72C;"
+                                   VerticalAlignment="Center" Margin="6,0,0,0"/>
                     </StackPanel>
                 </Button>
             </Grid>
@@ -115,19 +115,39 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" MinWidth="120"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <DockPanel LastChildFill="True" VerticalAlignment="Center" Margin="0,0,8,0">
-                                        <Border DockPanel.Dock="Left" Style="{StaticResource Pill}" Background="{StaticResource GhostFillBrush}">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left"
+                                                VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <Border Style="{StaticResource Pill}">
                                             <TextBlock Text="{Binding KeyType}" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
                                         </Border>
                                         <TextBlock Text="{Binding DisplayComment}" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                    </DockPanel>
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   Margin="0,0,6,0"/>
+                                        <Border Style="{StaticResource ExpiryCluster}"
+                                                Visibility="{Binding HasExpiry, Converter={StaticResource BoolToVis}}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding ExpiryText}"
+                                                           Foreground="{StaticResource MutedBrush}"
+                                                           FontFamily="Cascadia Mono, Consolas"
+                                                           FontSize="11"
+                                                           VerticalAlignment="Center"/>
+                                                <Button Style="{StaticResource ExpiryReloadButton}"
+                                                        Click="OnReloadClick"
+                                                        IsEnabled="{Binding CanReload}"
+                                                        Margin="6,0,0,0"
+                                                        ToolTip="Reload key and reset auto-unload">
+                                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                               Foreground="{StaticResource MutedBrush}"
+                                                               VerticalAlignment="Center" Text="&#xE72C;"/>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
                                     <StackPanel Grid.Column="1" Grid.RowSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button Style="{StaticResource RowButton}" Click="OnCopyClick"
                                                 ToolTip="Copy public key" Margin="0,0,6,0">
@@ -154,14 +174,6 @@
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
                                                Margin="0,4,0,0"/>
-                                    <TextBlock Grid.Row="2"
-                                               Text="{Binding ExpiryText}"
-                                               Visibility="{Binding HasExpiry, Converter={StaticResource BoolToVis}}"
-                                               Foreground="{StaticResource MutedBrush}"
-                                               FontSize="11"
-                                               VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               Margin="0,2,0,0"/>
                                 </Grid>
                             </Border>
                         </DataTemplate>

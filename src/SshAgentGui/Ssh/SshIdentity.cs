@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 
 namespace SshAgentGui.Ssh;
@@ -10,6 +11,7 @@ internal sealed class SshIdentity : INotifyPropertyChanged
     private int _bits;
     private string? _path;
     private DateTimeOffset? _expiresAt;
+    private TimeSpan? _lifetime;
 
     public SshIdentity(string fingerprint, string comment, string keyType, int bits, string? path = null)
     {
@@ -47,7 +49,11 @@ internal sealed class SshIdentity : INotifyPropertyChanged
     public string? Path
     {
         get => _path;
-        set => SetField(ref _path, value);
+        set
+        {
+            if (SetField(ref _path, value))
+                OnPropertyChanged(nameof(CanReload));
+        }
     }
 
     public DateTimeOffset? ExpiresAt
@@ -62,11 +68,27 @@ internal sealed class SshIdentity : INotifyPropertyChanged
         }
     }
 
+    public TimeSpan? Lifetime
+    {
+        get => _lifetime;
+        set
+        {
+            if (SetField(ref _lifetime, value))
+                OnPropertyChanged(nameof(CanReload));
+        }
+    }
+
     public int LoadGeneration { get; set; }
 
     public string DisplayComment => string.IsNullOrWhiteSpace(Comment) ? "(no comment)" : Comment;
 
     public bool HasExpiry => ExpiresAt is not null;
+
+    public bool CanReload =>
+        Lifetime is { } duration
+        && duration >= TimeSpan.FromSeconds(1)
+        && !string.IsNullOrWhiteSpace(Path)
+        && File.Exists(Path);
 
     public string ExpiryText => FormatExpiry(ExpiresAt, DateTimeOffset.UtcNow);
 
@@ -82,11 +104,17 @@ internal sealed class SshIdentity : INotifyPropertyChanged
         var remaining = expiresAt.Value - now;
         if (remaining <= TimeSpan.Zero)
             return "Expired";
+
+        var seconds = remaining.Seconds.ToString("D2", CultureInfo.InvariantCulture);
         if (remaining.TotalHours >= 1)
-            return $"{(int)remaining.TotalHours}h left";
-        if (remaining.TotalMinutes >= 1)
-            return $"{(int)remaining.TotalMinutes}m left";
-        return "<1m left";
+        {
+            var hours = ((int)remaining.TotalHours).ToString(CultureInfo.InvariantCulture);
+            var minutes = remaining.Minutes.ToString("D2", CultureInfo.InvariantCulture);
+            return hours + ":" + minutes + ":" + seconds;
+        }
+
+        var mins = ((int)remaining.TotalMinutes).ToString(CultureInfo.InvariantCulture);
+        return mins + ":" + seconds;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
