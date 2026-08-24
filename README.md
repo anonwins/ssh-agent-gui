@@ -16,6 +16,7 @@ Built for developers who use Git, SSH, and WSL on Windows and want something clo
 - **Auto-unload timers** — set a lifetime per key or a default for the next load (30 min, 1 hour, 8 hours, or until you unload manually)
 - **System tray** — minimize to the tray and keep the app running in the background
 - **Single instance** — launching again brings the existing window forward
+- **Pageant bridge** — PuTTY, WinSCP (Pageant mode), Plink, and TortoiseGit can use keys loaded here while the app is running. Every signature asks Allow or Deny.
 
 ## Requirements
 
@@ -70,5 +71,7 @@ The app uses the Windows OpenSSH binaries under `%SystemRoot%\System32\OpenSSH\`
 **Auto-unload** is enforced by this app while it is running. Windows `ssh-agent` does not honor `ssh-add -t` lifetimes, so the GUI unloads keys on a timer instead. If you fully quit the app, keys stay loaded. The same applies after a crash, sleep, or if another tool reloads a key.
 
 **Passphrases** are kept in memory only for the unlock flow and are passed to OpenSSH over a short-lived named pipe. They are not written to disk.
+
+**Pageant:** while the app is running it hosts the classic Pageant window and the Pageant named pipe, and forwards requests to Windows `ssh-agent`. WinSCP needs that pipe to list keys when no `.ppk` is configured; a configured `.ppk` can still sign over the older window path. Close PuTTY Pageant first if it is already running, or the bridge will not start. OpenSSH `ssh` and Git for Windows talk to the Windows agent directly and will not show the Allow/Deny prompt. Do not run this app as Administrator — unelevated PuTTY cannot send messages to an elevated window.
 
 **Trust boundary:** the app runs Windows OpenSSH tools from fixed install locations. It does not verify binary signatures. Treat your OpenSSH installation as part of your system trust model.

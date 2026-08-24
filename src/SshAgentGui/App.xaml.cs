@@ -1,5 +1,6 @@
 ﻿using System.Windows;
 using Microsoft.Win32;
+using SshAgentGui.Ssh;
 
 namespace SshAgentGui;
 
@@ -9,6 +10,7 @@ public partial class App : System.Windows.Application
     private AgentSession? _session;
     private MainWindow? _main;
     private TrayController? _tray;
+    private PageantBridge? _pageant;
     private bool _watchingAccent;
 
     private void App_OnStartup(object sender, StartupEventArgs e)
@@ -60,7 +62,25 @@ public partial class App : System.Windows.Application
             () => _session.UnloadAllAsync());
         _single.ShowRequested += () => Dispatcher.BeginInvoke(() => _main.RestoreFromTray());
         _main.Show();
+        StartPageantBridge();
         _ = _session.RefreshAsync();
+    }
+
+    private void StartPageantBridge()
+    {
+        if (_session is null || _main is null)
+            return;
+        if (PageantBridge.IsTaken())
+        {
+            _session.SetPageantStatus(PageantStatusText.Taken);
+            return;
+        }
+
+        _pageant = PageantBridge.TryStart(
+            new OpenSshAgentPipe(),
+            blob => SignConfirmWindow.Ask(_session, blob),
+            Dispatcher);
+        _session.SetPageantStatus(_pageant is null ? PageantStatusText.Off : PageantStatusText.On);
     }
 
     private void App_OnSessionEnding(object sender, SessionEndingCancelEventArgs e)
@@ -83,6 +103,8 @@ public partial class App : System.Windows.Application
             _watchingAccent = false;
         }
 
+        _pageant?.Dispose();
+        _pageant = null;
         _session?.Dispose();
         _tray?.Dispose();
         _single?.Dispose();

@@ -19,6 +19,7 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
     private DispatcherTimer? _timer;
     private bool _isBusy;
     private string _statusText = "Starting…";
+    private string _pageantStatus = PageantStatusText.Off;
     private int _loadedCount;
     private bool _isAgentUnavailable;
     private bool _isBinaryMissing;
@@ -111,6 +112,22 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
     public bool CanStartAgent => _canStartAgent;
 
     internal void SetStatus(string text) => StatusText = text;
+
+    public string PageantStatus
+    {
+        get => _pageantStatus;
+        private set
+        {
+            if (_pageantStatus == value)
+                return;
+            _pageantStatus = value;
+            OnPropertyChanged();
+        }
+    }
+
+    internal void SetPageantStatus(string text) => PageantStatus = text;
+
+    internal SshIdentity? FindByFingerprint(string fingerprint) => FindIdentity(fingerprint);
 
     public string AgentDownDetail => _agentDownDetail;
 
@@ -885,6 +902,13 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+
+internal static class PageantStatusText
+{
+    public const string On = "Pageant bridge on";
+    public const string Taken = "Pageant already running";
+    public const string Off = "Pageant bridge off";
 }
 
 internal sealed record CreateKeyRequest(

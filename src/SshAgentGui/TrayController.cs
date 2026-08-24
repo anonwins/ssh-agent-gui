@@ -13,6 +13,7 @@ internal sealed class TrayController : IDisposable
     private readonly Func<Task> _unloadAll;
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _countItem;
+    private readonly ToolStripMenuItem _pageantItem;
     private readonly ToolStripMenuItem _unloadItem;
     private bool _disposed;
 
@@ -25,6 +26,7 @@ internal sealed class TrayController : IDisposable
 
         _statusItem = new ToolStripMenuItem(Trim(_session.StatusText, 60)) { Enabled = false };
         _countItem = new ToolStripMenuItem(_session.LoadedCountText) { Enabled = false };
+        _pageantItem = new ToolStripMenuItem(_session.PageantStatus) { Enabled = false };
         _unloadItem = new ToolStripMenuItem("Unload all", null, (_, _) => RunOnDispatcher(_unloadAll));
 
         var menu = new ContextMenuStrip
@@ -33,6 +35,7 @@ internal sealed class TrayController : IDisposable
         };
         menu.Items.Add(_statusItem);
         menu.Items.Add(_countItem);
+        menu.Items.Add(_pageantItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_unloadItem);
         menu.Items.Add(new ToolStripMenuItem("Open", null, (_, _) => _show()));
@@ -64,7 +67,8 @@ internal sealed class TrayController : IDisposable
             or nameof(AgentSession.IsIdle)
             or nameof(AgentSession.LoadedCount)
             or nameof(AgentSession.LoadedCountText)
-            or nameof(AgentSession.IsAgentUnavailable)))
+            or nameof(AgentSession.IsAgentUnavailable)
+            or nameof(AgentSession.PageantStatus)))
             return;
 
         void Update()
@@ -86,6 +90,7 @@ internal sealed class TrayController : IDisposable
     {
         _statusItem.Text = Trim(_session.StatusText, 60);
         _countItem.Text = _session.LoadedCountText;
+        _pageantItem.Text = _session.PageantStatus;
         _unloadItem.Enabled = _session.LoadedCount > 0 && _session.IsIdle;
     }
 
