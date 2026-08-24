@@ -35,7 +35,7 @@
 
         <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="3" Orientation="Horizontal">
             <TextBlock Style="{StaticResource Glyph}" Text="&#xE948;" FontSize="20"
-                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                       Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"/>
             <TextBlock Text="New OpenSSH key" FontSize="16" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
         </StackPanel>
 

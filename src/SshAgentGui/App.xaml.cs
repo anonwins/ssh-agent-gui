@@ -1,4 +1,5 @@
 ﻿using System.Windows;
+using Microsoft.Win32;
 
 namespace SshAgentGui;
 
@@ -8,9 +9,12 @@ public partial class App : System.Windows.Application
     private AgentSession? _session;
     private MainWindow? _main;
     private TrayController? _tray;
+    private bool _watchingAccent;
 
     private void App_OnStartup(object sender, StartupEventArgs e)
     {
+        WindowsAccent.Apply(Resources);
+
         if (AskPassMode.IsLaunch(e.Args))
         {
             Shutdown(AskPassMode.Run(e.Args));
@@ -44,6 +48,8 @@ public partial class App : System.Windows.Application
             return;
         }
 
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        _watchingAccent = true;
         UiSettings.Load();
         _session = new AgentSession();
         _main = new MainWindow(_session);
@@ -62,8 +68,21 @@ public partial class App : System.Windows.Application
         _main?.AllowCloseForShutdown();
     }
 
+    private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category is not (UserPreferenceCategory.Color or UserPreferenceCategory.General))
+            return;
+        Dispatcher.BeginInvoke(() => WindowsAccent.Apply(Resources));
+    }
+
     private void App_OnExit(object sender, ExitEventArgs e)
     {
+        if (_watchingAccent)
+        {
+            SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+            _watchingAccent = false;
+        }
+
         _session?.Dispose();
         _tray?.Dispose();
         _single?.Dispose();
