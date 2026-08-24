@@ -1,36 +1,74 @@
 # SSH Agent GUI
 
-Windows GUI for the OpenSSH Authentication Agent. Create keys, load them, copy the public half, unload them.
+A small Windows app that gives you a visual front end for the OpenSSH authentication agent. Create keys, load them into the agent, copy public keys, and unload when you are done — without living in a terminal.
 
-It talks to the Windows OpenSSH tools under `%SystemRoot%\System32\OpenSSH\` (then `%ProgramFiles%\OpenSSH`) — not the ones Git puts on `PATH`. Those directories are an allowlist only. This app does not verify binary signatures or authenticity. An attacker who can replace `ssh-add.exe` there wins.
+Built for developers who use Git, SSH, and WSL on Windows and want something closer to what macOS or Linux desktop tools offer.
 
-Minimize sends the window to the tray. Close and tray Exit quit. If anything is still loaded you’ll get a choice: leave the keys, unload them, or cancel. A passphrase key opens a dialog, not a console.
+![SSH Agent GUI main window](docs/screenshot.png)
 
-One instance. A second launch just brings the existing window forward.
+## Features
 
-## Auto-unload is a GUI-enforced policy, not a Windows ssh-agent security guarantee
-
-This app does not pass `ssh-add -t`. The Windows agent does not honor it, and passing it can fail the add. While the app is running it may run `ssh-add -d` when the chosen Auto-unload time is due. That is session policy, not an agent-enforced lifetime.
-
-It does **not** unload keys if the GUI is fully quit (the tray is enough to keep policy alive). Crashes, sleep, a killed process, a failed `ssh-add -d`, or another tool re-adding the same key can leave the agent holding the key.
-
-## Passphrases
-
-Passphrases are not written to disk. They exist only briefly in this process and are given to OpenSSH over an ephemeral named pipe (`CurrentUserOnly`). That pipe is intended to restrict access to the current Windows user. It is a same-user bearer capability (a random GUID name) and does **not** protect against a malicious process running as the same user.
+- **Manage keys in one place** — see what is loaded, load new keys, unload selected keys, or unload all
+- **Create keys** — Ed25519 or RSA 4096, with an optional passphrase
+- **Passphrase prompts in the app** — no console window when unlocking a key
+- **Copy public keys** — grab the `.pub` text for GitHub, servers, or anywhere else
+- **Drag and drop** — drop a private key file onto the window to load it
+- **Auto-unload timers** — set a lifetime per key or a default for the next load (30 min, 1 hour, 8 hours, or until you unload manually)
+- **System tray** — minimize to the tray and keep the app running in the background
+- **Single instance** — launching again brings the existing window forward
 
 ## Requirements
 
-- Windows 10/11, OpenSSH Client installed
-- The `ssh-agent` service present (Manual is fine). If it is stopped, the app can start it; Windows may prompt for elevation. A Disabled service has to be enabled in Services first.
-- .NET 9 to build
+- Windows 10 or 11
+- [OpenSSH Client](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse) installed
+- The `ssh-agent` Windows service available (Manual start is fine)
 
-## Build
+## Getting started
+
+There are no published releases yet. Build from source:
 
 ```bat
 dotnet test SshAgentGui.sln
 dotnet build SshAgentGui.sln -c Release
 ```
 
-Then run `src\SshAgentGui\bin\Release\net9.0-windows\SshAgentGui.exe`. Use the built exe (not `dotnet run` as the askpass helper) so OpenSSH can invoke this program to unlock a key.
+Run:
 
-Settings live in `%AppData%\SshAgentGui\` (`keys.json` for key metadata, `ui.json` for window size/position and the last folders you picked). That directory is given a user-only DACL; it is not DPAPI. `keys.json` stores fingerprint, path, comment, type, bits, and optional `expiresAtUtc`. Paths are metadata, not credentials, but they may be privacy-sensitive.
+```bat
+src\SshAgentGui\bin\Release\net9.0-windows\SshAgentGui.exe
+```
+
+Use the built `.exe` directly. Do not run the app with `dotnet run` if you need passphrase unlocking to work — OpenSSH invokes the app as an askpass helper, and that path expects a real executable.
+
+On first run, if `ssh-agent` is stopped, the app can start it for you. Windows may ask for elevation. If the service is disabled, enable it in Services first.
+
+## Usage
+
+| Action | How |
+| --- | --- |
+| Create a key | **Create key**, or `Ctrl+N` |
+| Load a key | **Load key**, drag a file onto the window, or `Ctrl+O` |
+| Unload a key | Select it and press `Delete`, or use the unload action in the list |
+| Copy a public key | Use **Copy public key** on a loaded or saved key |
+| Refresh the list | `F5` |
+| Hide the window | `Escape` (app stays in the tray) |
+
+When you close the window or choose **Exit** from the tray, you can leave keys loaded, unload them first, or cancel.
+
+Settings are stored under `%AppData%\SshAgentGui\`.
+
+## Development
+
+- .NET 9
+- WPF UI
+- Tests: `dotnet test SshAgentGui.sln`
+
+The app uses the Windows OpenSSH binaries under `%SystemRoot%\System32\OpenSSH\` (with a fallback to `%ProgramFiles%\OpenSSH`), not whatever happens to be on `PATH`.
+
+## Notes
+
+**Auto-unload** is enforced by this app while it is running. Windows `ssh-agent` does not honor `ssh-add -t` lifetimes, so the GUI unloads keys on a timer instead. If you fully quit the app, keys stay loaded. The same applies after a crash, sleep, or if another tool reloads a key.
+
+**Passphrases** are kept in memory only for the unlock flow and are passed to OpenSSH over a short-lived named pipe. They are not written to disk.
+
+**Trust boundary:** the app runs Windows OpenSSH tools from fixed install locations. It does not verify binary signatures. Treat your OpenSSH installation as part of your system trust model.
