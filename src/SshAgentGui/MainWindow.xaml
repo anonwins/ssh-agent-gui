@@ -62,7 +62,7 @@
                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                         </StackPanel>
                     </Button>
-                    <TextBlock Text="Next load" VerticalAlignment="Center" Margin="16,0,8,0"
+                    <TextBlock Text="Auto-unload" VerticalAlignment="Center" Margin="16,0,8,0"
                                Foreground="{StaticResource MutedBrush}"
                                IsEnabled="{Binding IsIdle}"/>
                     <ComboBox x:Name="LifetimeBox"
@@ -70,7 +70,7 @@
                               VerticalAlignment="Center"
                               IsEnabled="{Binding IsIdle}"
                               SelectionChanged="OnLifetimeChanged"
-                              ToolTip="Windows ssh-agent ignores key lifetimes. This app may unload the key while it is running."/>
+                              ToolTip="{x:Static local:AutoUnloadUi.ComboToolTip}"/>
                 </StackPanel>
                 <Button Grid.Column="1"
                         Style="{StaticResource CountChip}"

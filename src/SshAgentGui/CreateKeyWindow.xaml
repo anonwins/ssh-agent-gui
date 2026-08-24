@@ -1,6 +1,7 @@
 <Window x:Class="SshAgentGui.CreateKeyWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SshAgentGui"
         Title="Create key"
         Width="520"
         MinWidth="480"
@@ -85,7 +86,7 @@
                   VerticalAlignment="Center" Margin="0,0,0,10"
                   IsEnabled="{Binding IsChecked, ElementName=LoadBox}"
                   SelectionChanged="OnLifetimeChanged"
-                  ToolTip="Windows ssh-agent ignores key lifetimes. This app may unload the key while it is running."/>
+                  ToolTip="{x:Static local:AutoUnloadUi.ComboToolTip}"/>
 
         <TextBlock x:Name="ErrorText" Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="3"
                    Margin="0,12,0,0" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap"/>

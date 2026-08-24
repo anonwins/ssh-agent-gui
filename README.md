@@ -13,7 +13,7 @@ Built for developers who use Git, SSH, and WSL on Windows and want something clo
 - **Passphrase prompts in the app** — no console window when unlocking a key
 - **Copy public keys** — grab the `.pub` text for GitHub, servers, or anywhere else
 - **Drag and drop** — drop a private key file onto the window to load it
-- **Auto-unload timers** — set a lifetime per key or a default for the next load (30 min, 1 hour, 8 hours, or until you unload manually)
+- **Auto-unload timers** — set a lifetime per key or a default for the next load (30 min, 1 hour, 8 hours, or Off)
 - **System tray** — minimize to the tray and keep the app running in the background
 - **Single instance** — launching again brings the existing window forward
 - **Pageant bridge** — PuTTY, WinSCP (Pageant mode), Plink, and TortoiseGit can use keys loaded here while the app is running. Every signature asks Allow or Deny.
@@ -68,7 +68,7 @@ The app uses the Windows OpenSSH binaries under `%SystemRoot%\System32\OpenSSH\`
 
 ## Notes
 
-**Auto-unload** is enforced by this app while it is running. Windows `ssh-agent` does not honor `ssh-add -t` lifetimes, so the GUI unloads keys on a timer instead. If you fully quit the app, keys stay loaded. The same applies after a crash, sleep, or if another tool reloads a key.
+**Auto-unload** is enforced by this app while it is running. Windows `ssh-agent` does not honor `ssh-add -t` lifetimes, so the GUI unloads keys on a timer instead. The toolbar **Auto-unload** combo sets the default for the next key you load; change a loaded key from its countdown in the list. If you fully quit the app, keys stay loaded. The same applies after a crash, sleep, or if another tool reloads a key.
 
 **Passphrases** are kept in memory only for the unlock flow and are passed to OpenSSH over a short-lived named pipe. They are not written to disk.
 
