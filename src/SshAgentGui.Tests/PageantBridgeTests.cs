@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using SshAgentGui.Ssh;
 
@@ -22,6 +23,17 @@ public sealed class PageantBridgeTests
     [Fact]
     public void Mapping_name_accepts_pageant_request() =>
         Assert.True(PageantMapping.IsSafeName("PageantRequest00001234"));
+
+    [Fact]
+    public void Mapping_name_reads_putty_thread_id()
+    {
+        Assert.True(PageantMapping.TryGetPuttyRequestThreadId("PageantRequest00004e28", out var id));
+        Assert.Equal(0x4e28u, id);
+        Assert.True(PageantMapping.TryGetPuttyRequestThreadId("PageantRequest4e28", out var shortId));
+        Assert.Equal(0x4e28u, shortId);
+        Assert.False(PageantMapping.TryGetPuttyRequestThreadId("PageantRequest", out _));
+        Assert.False(PageantMapping.TryGetPuttyRequestThreadId("OtherRequest00004e28", out _));
+    }
 
     [Fact]
     public void Failure_frame_is_single_failure_byte() =>
@@ -54,7 +66,7 @@ public sealed class PageantBridgeTests
     {
         var pipe = new RecordingPipe();
         var frame = SshAgentFrame.Prefix(SshAgentFrame.Ssh1RequestIdentities, []);
-        var response = PageantDispatch.Handle(frame, pipe, _ => true);
+        var response = PageantDispatch.Handle(frame, pipe, (_, _) => true);
         Assert.Equal(SshAgentFrame.Failure(), response);
         Assert.Empty(pipe.Requests);
     }
@@ -64,7 +76,7 @@ public sealed class PageantBridgeTests
     {
         var pipe = new RecordingPipe();
         var frame = SignFrame(Encoding.ASCII.GetBytes("blob"), "data");
-        var response = PageantDispatch.Handle(frame, pipe, _ => false);
+        var response = PageantDispatch.Handle(frame, pipe, (_, _) => false);
         Assert.Equal(SshAgentFrame.Failure(), response);
         Assert.Empty(pipe.Requests);
     }
@@ -76,7 +88,7 @@ public sealed class PageantBridgeTests
         var pipe = new RecordingPipe { Reply = expected };
         var confirmed = false;
         var frame = SshAgentFrame.Prefix(SshAgentFrame.RequestIdentities, []);
-        var response = PageantDispatch.Handle(frame, pipe, _ =>
+        var response = PageantDispatch.Handle(frame, pipe, (_, _) =>
         {
             confirmed = true;
             return true;
@@ -92,7 +104,7 @@ public sealed class PageantBridgeTests
         var blob = Encoding.ASCII.GetBytes("blob");
         var frame = SignFrame(blob, "data");
         var pipe = new RecordingPipe { Reply = SshAgentFrame.Prefix(14, [1, 2, 3]) };
-        var response = PageantDispatch.Handle(frame, pipe, seen => seen.SequenceEqual(blob));
+        var response = PageantDispatch.Handle(frame, pipe, (seen, _) => seen.SequenceEqual(blob));
         Assert.Single(pipe.Requests);
         Assert.Equal(frame, pipe.Requests[0]);
         Assert.Equal(pipe.Reply, response);
@@ -164,7 +176,7 @@ public sealed class PageantBridgeTests
         var reply = SshAgentFrame.Prefix(12, [0, 0, 0, 0]);
         var agent = new RecordingPipe { Reply = reply };
         var confirmed = false;
-        using var server = new PageantPipeServer(name, agent, _ =>
+        using var server = new PageantPipeServer(name, agent, (_, _) =>
         {
             confirmed = true;
             return true;
@@ -206,11 +218,100 @@ public sealed class PageantBridgeTests
     }
 
     [Fact]
+    public void Caller_format_drops_empty() =>
+        Assert.Null(PageantCaller.Format(null, null, null));
+
+    [Fact]
+    public void Caller_format_dedupes_same_name() =>
+        Assert.Equal("WinSCP", PageantCaller.Format("WinSCP", "WinSCP", "WinSCP"));
+
+    [Fact]
+    public void Caller_format_combines_description_and_title() =>
+        Assert.Equal("WinSCP — aella-vps1", PageantCaller.Format("WinSCP", "aella-vps1", "WinSCP"));
+
+    [Fact]
+    public void Caller_format_drops_path_title() =>
+        Assert.Equal("WinSCP", PageantCaller.Format("WinSCP", @"C:\Program Files\WinSCP\WinSCP.exe", "WinSCP"));
+
+    [Fact]
+    public void Caller_prompt_unknown() =>
+        Assert.Equal(PageantCaller.UnknownPrompt, PageantCaller.PromptLine(null));
+
+    [Fact]
+    public void Caller_prompt_names_program() =>
+        Assert.Equal("WinSCP wants to use a key from the agent.", PageantCaller.PromptLine("WinSCP"));
+
+    [Fact]
+    public void Caller_prompt_keeps_formatted_label() =>
+        Assert.StartsWith("WinSCP — host.example/session", PageantCaller.PromptLine("WinSCP — host.example/session"));
+
+    [Fact]
+    public void Caller_short_product_strips_marketing_suffix() =>
+        Assert.Equal("WinSCP", PageantCaller.ShortProduct("WinSCP: SFTP, FTP, WebDAV, S3 and SCP client"));
+
+    [Fact]
+    public void Caller_from_putty_mapping_of_this_thread()
+    {
+        var name = $"PageantRequest{GetCurrentThreadId():x8}";
+        var label = PageantCaller.FromPuttyMappingName(name);
+        Assert.False(string.IsNullOrWhiteSpace(label));
+    }
+
+    [Fact]
+    public async Task Caller_from_pipe_is_this_process()
+    {
+        var name = "ssh-agent-gui-caller-" + Guid.NewGuid().ToString("n");
+        using var server = new NamedPipeServerStream(
+            name,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        using var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+        var accepted = server.WaitForConnectionAsync();
+        await client.ConnectAsync(2000);
+        await accepted;
+        var label = PageantCaller.FromPipe(server.SafePipeHandle);
+        Assert.False(string.IsNullOrWhiteSpace(label));
+    }
+
+    [Fact]
+    public void Caller_from_invalid_is_null()
+    {
+        Assert.Null(PageantCaller.FromProcessId(-1));
+        Assert.Null(PageantCaller.FromWindow(IntPtr.Zero));
+    }
+
+    [Fact]
+    public void Caller_from_current_process_is_non_empty()
+    {
+        var label = PageantCaller.FromProcessId(Environment.ProcessId);
+        Assert.False(string.IsNullOrWhiteSpace(label));
+    }
+
+    [Fact]
+    public void Sign_confirm_receives_caller()
+    {
+        string? seen = "unset";
+        var frame = SignFrame(Encoding.ASCII.GetBytes("blob"), "data");
+        var pipe = new RecordingPipe { Reply = SshAgentFrame.Prefix(14, [1]) };
+        PageantDispatch.Handle(frame, pipe, (_, caller) =>
+        {
+            seen = caller;
+            return true;
+        }, "WinSCP");
+        Assert.Equal("WinSCP", seen);
+    }
+
+    [Fact]
     public void Pipe_connect_fail_returns_null()
     {
         var client = new OpenSshAgentPipe("ssh-agent-gui-missing-" + Guid.NewGuid().ToString("n"));
         Assert.Null(client.Transact(SshAgentFrame.Prefix(SshAgentFrame.RequestIdentities, [])));
     }
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
 
     private static byte[] SignFrame(byte[] blob, string data)
     {

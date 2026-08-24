@@ -1,8 +1,10 @@
 namespace SshAgentGui.Ssh;
 
+internal delegate bool PageantConfirm(byte[] blob, string? caller);
+
 internal static class PageantDispatch
 {
-    public static byte[]? Handle(byte[] frame, IOpenSshAgentPipe pipe, Func<byte[], bool> confirm)
+    public static byte[]? Handle(byte[] frame, IOpenSshAgentPipe pipe, PageantConfirm confirm, string? caller = null)
     {
         if (!SshAgentFrame.TryRead(frame, out var type, out var body))
             return null;
@@ -16,7 +18,7 @@ internal static class PageantDispatch
                 return SshAgentFrame.Failure();
             try
             {
-                if (!confirm(blob))
+                if (!confirm(blob, caller))
                     return SshAgentFrame.Failure();
             }
             catch

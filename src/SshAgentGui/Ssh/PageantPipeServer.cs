@@ -6,20 +6,22 @@ internal sealed class PageantPipeServer : IDisposable
 {
     private readonly string _name;
     private readonly IOpenSshAgentPipe _agent;
-    private readonly Func<byte[], bool> _confirm;
+    private readonly PageantConfirm _confirm;
+    private const int Listeners = 3;
     private readonly CancellationTokenSource _cts = new();
     private Task? _loop;
     private NamedPipeServerStream? _listening;
     private bool _disposed;
 
-    public PageantPipeServer(string name, IOpenSshAgentPipe agent, Func<byte[], bool> confirm)
+    public PageantPipeServer(string name, IOpenSshAgentPipe agent, PageantConfirm confirm)
     {
         _name = name;
         _agent = agent;
         _confirm = confirm;
     }
 
-    public void Start() => _loop = Task.Run(() => RunAsync(_cts.Token));
+    public void Start() =>
+        _loop = Task.WhenAll(Enumerable.Range(0, Listeners).Select(_ => Task.Run(() => RunAsync(_cts.Token))));
 
     public void Dispose()
     {
@@ -85,6 +87,7 @@ internal sealed class PageantPipeServer : IDisposable
     {
         using (server)
         {
+            var caller = PageantCaller.FromPipe(server.SafePipeHandle);
             try
             {
                 while (server.IsConnected && !cancellationToken.IsCancellationRequested)
@@ -102,7 +105,8 @@ internal sealed class PageantPipeServer : IDisposable
                     var frame = new byte[4 + body.Length];
                     header.CopyTo(frame, 0);
                     body.CopyTo(frame, 4);
-                    var response = PageantDispatch.Handle(frame, _agent, _confirm) ?? SshAgentFrame.Failure();
+                    caller ??= PageantCaller.FromPipe(server.SafePipeHandle);
+                    var response = PageantDispatch.Handle(frame, _agent, _confirm, caller) ?? SshAgentFrame.Failure();
                     await server.WriteAsync(response, cancellationToken).ConfigureAwait(false);
                     await server.FlushAsync(cancellationToken).ConfigureAwait(false);
                 }

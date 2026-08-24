@@ -8,16 +8,17 @@ public partial class SignConfirmWindow : Window
 {
     private readonly DispatcherTimer _timer;
 
-    internal static bool Ask(AgentSession session, byte[] blob)
+    internal static bool Ask(AgentSession session, byte[] blob, string? caller)
     {
         var identity = session.FindByFingerprint(OpenSshFingerprint.Sha256(blob));
-        var dialog = new SignConfirmWindow(identity);
+        var dialog = new SignConfirmWindow(identity, caller);
         return dialog.ShowDialog() == true;
     }
 
-    internal SignConfirmWindow(SshIdentity? identity)
+    internal SignConfirmWindow(SshIdentity? identity, string? caller = null)
     {
         InitializeComponent();
+        CallerText.Text = PageantCaller.PromptLine(caller);
         if (identity is null)
         {
             KeyText.Text = "Unknown key";

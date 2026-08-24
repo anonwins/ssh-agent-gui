@@ -17,7 +17,7 @@
     <DockPanel Margin="20" Background="{StaticResource BgBrush}">
         <StackPanel DockPanel.Dock="Top">
             <TextBlock Text="Allow this signature?" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8"/>
-            <TextBlock Text="A program wants to use a key from the agent."
+            <TextBlock x:Name="CallerText" Text="A program wants to use a key from the agent."
                        TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,12"/>
             <TextBlock x:Name="KeyText" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <TextBlock x:Name="FingerprintText" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"

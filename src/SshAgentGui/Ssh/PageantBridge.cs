@@ -10,7 +10,7 @@ internal sealed class PageantBridge : IDisposable
     public const uint AgentCopyDataId = 0x804e50ba;
 
     private readonly IOpenSshAgentPipe _pipe;
-    private readonly Func<byte[], bool> _confirm;
+    private readonly PageantConfirm _confirm;
     private readonly Dispatcher _ui;
     private readonly Thread _thread;
     private readonly ManualResetEventSlim _ready = new(false);
@@ -21,7 +21,7 @@ internal sealed class PageantBridge : IDisposable
     private bool _started;
     private bool _disposed;
 
-    private PageantBridge(IOpenSshAgentPipe pipe, Func<byte[], bool> confirm, Dispatcher ui)
+    private PageantBridge(IOpenSshAgentPipe pipe, PageantConfirm confirm, Dispatcher ui)
     {
         _pipe = pipe;
         _confirm = confirm;
@@ -36,7 +36,7 @@ internal sealed class PageantBridge : IDisposable
 
     public static bool IsTaken() => FindWindowW(ClassName, ClassName) != IntPtr.Zero;
 
-    public static PageantBridge? TryStart(IOpenSshAgentPipe pipe, Func<byte[], bool> confirm, Dispatcher ui)
+    public static PageantBridge? TryStart(IOpenSshAgentPipe pipe, PageantConfirm confirm, Dispatcher ui)
     {
         if (IsTaken())
             return null;
@@ -140,12 +140,12 @@ internal sealed class PageantBridge : IDisposable
         }
 
         if (msg == 0x004A) // WM_COPYDATA
-            return OnCopyData(lParam) ? new IntPtr(1) : IntPtr.Zero;
+            return OnCopyData(wParam, lParam) ? new IntPtr(1) : IntPtr.Zero;
 
         return DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
-    private bool OnCopyData(IntPtr lParam)
+    private bool OnCopyData(IntPtr sender, IntPtr lParam)
     {
         var cds = Marshal.PtrToStructure<CopyDataStruct>(lParam);
         if (cds.dwData != (UIntPtr)AgentCopyDataId)
@@ -181,7 +181,8 @@ internal sealed class PageantBridge : IDisposable
 
             var frame = new byte[total];
             Marshal.Copy(view, frame, 0, total);
-            var response = PageantDispatch.Handle(frame, _pipe, ConfirmOnUi);
+            var caller = PageantCaller.FromWindow(sender) ?? PageantCaller.FromPuttyMappingName(name);
+            var response = PageantDispatch.Handle(frame, _pipe, ConfirmOnUi, caller);
             if (response is null || response.Length > size)
                 return false;
 
@@ -195,11 +196,11 @@ internal sealed class PageantBridge : IDisposable
         }
     }
 
-    private bool ConfirmOnUi(byte[] blob)
+    private bool ConfirmOnUi(byte[] blob, string? caller)
     {
         if (_ui.CheckAccess())
-            return _confirm(blob);
-        return _ui.Invoke(() => _confirm(blob));
+            return _confirm(blob, caller);
+        return _ui.Invoke(() => _confirm(blob, caller));
     }
 
     public void Dispose()

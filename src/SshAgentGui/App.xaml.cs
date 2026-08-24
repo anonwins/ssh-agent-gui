@@ -78,7 +78,7 @@ public partial class App : System.Windows.Application
 
         _pageant = PageantBridge.TryStart(
             new OpenSshAgentPipe(),
-            blob => SignConfirmWindow.Ask(_session, blob),
+            (blob, caller) => SignConfirmWindow.Ask(_session, blob, caller),
             Dispatcher);
         _session.SetPageantStatus(_pageant is null ? PageantStatusText.Off : PageantStatusText.On);
     }
