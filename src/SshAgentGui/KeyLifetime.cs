@@ -11,4 +11,18 @@ internal sealed record KeyLifetime(string Label, TimeSpan? Duration)
     ];
 
     public override string ToString() => Label;
+
+    public static KeyLifetime FromDuration(TimeSpan? duration)
+    {
+        foreach (var preset in Presets)
+        {
+            if (preset.Duration == duration)
+                return preset;
+        }
+
+        return Presets[0];
+    }
+
+    public static KeyLifetime FromSeconds(int? seconds) =>
+        FromDuration(seconds is { } value && value >= 1 ? TimeSpan.FromSeconds(value) : null);
 }

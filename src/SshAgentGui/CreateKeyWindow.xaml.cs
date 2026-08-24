@@ -13,10 +13,11 @@ public partial class CreateKeyWindow : Window
     {
         InitializeComponent();
         LifetimeBox.ItemsSource = KeyLifetime.Presets;
-        LifetimeBox.SelectedIndex = 0;
+        LifetimeBox.SelectedItem = KeyLifetime.FromSeconds(UiSettings.Current.LastLifetimeSeconds);
         CommentBox.Text = $"{Environment.UserName}@{Environment.MachineName}";
         PathBox.Text = DefaultPathForType(ed25519: true);
         PathBox.TextChanged += (_, _) => _pathTouched = true;
+        UpdatePassphraseHint();
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e) => TitleBarDarkMode.Apply(this);
@@ -31,6 +32,16 @@ public partial class CreateKeyWindow : Window
         PathBox.Text = DefaultPathForType(IsEd25519);
     }
 
+    private void OnLifetimeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded)
+            return;
+        if (LifetimeBox.SelectedItem is KeyLifetime lifetime)
+            UiSettings.Current.RememberLifetime(lifetime.Duration);
+    }
+
+    private void OnPassphraseChanged(object sender, RoutedEventArgs e) => UpdatePassphraseHint();
+
     private void OnBrowseClick(object sender, RoutedEventArgs e)
     {
         var picked = KeyFileDialog.BrowseNew("New key file", PathBox.Text);
@@ -42,7 +53,7 @@ public partial class CreateKeyWindow : Window
 
     private void OnCreateClick(object sender, RoutedEventArgs e)
     {
-        ErrorText.Text = "";
+        SetError("", danger: true);
         var path = PathBox.Text.Trim();
         var comment = CommentBox.Text.Trim();
         var passphrase = PassphraseBox.Password;
@@ -50,19 +61,19 @@ public partial class CreateKeyWindow : Window
 
         if (string.IsNullOrWhiteSpace(path))
         {
-            ErrorText.Text = "Choose a file path.";
+            SetError("Choose a file path.", danger: true);
             return;
         }
 
         if (passphrase != confirm)
         {
-            ErrorText.Text = "Passphrase and confirmation do not match.";
+            SetError("Passphrase and confirmation do not match.", danger: true);
             return;
         }
 
         if (File.Exists(path) || File.Exists(path + ".pub"))
         {
-            ErrorText.Text = "That key file already exists. Choose another name (this app will not overwrite).";
+            SetError("That key file already exists. Choose another name (this app will not overwrite).", danger: true);
             return;
         }
 
@@ -75,6 +86,31 @@ public partial class CreateKeyWindow : Window
             LoadIntoAgent: LoadBox.IsChecked == true,
             Lifetime: LoadBox.IsChecked == true ? lifetime?.Duration : null);
         DialogResult = true;
+    }
+
+    private void UpdatePassphraseHint()
+    {
+        var passphrase = PassphraseBox.Password;
+        var confirm = ConfirmBox.Password;
+        if (string.IsNullOrEmpty(passphrase) && string.IsNullOrEmpty(confirm))
+        {
+            SetError("Key will not be encrypted.", danger: false);
+            return;
+        }
+
+        if (passphrase != confirm)
+        {
+            SetError("Passphrase and confirmation do not match.", danger: true);
+            return;
+        }
+
+        SetError("", danger: true);
+    }
+
+    private void SetError(string text, bool danger)
+    {
+        ErrorText.Text = text;
+        ErrorText.Foreground = (System.Windows.Media.Brush)FindResource(danger ? "DangerBrush" : "MutedBrush");
     }
 
     private bool IsEd25519 => TypeBox.SelectedIndex == 0;

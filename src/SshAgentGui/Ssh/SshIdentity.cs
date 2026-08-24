@@ -105,16 +105,10 @@ internal sealed class SshIdentity : INotifyPropertyChanged
         if (remaining <= TimeSpan.Zero)
             return "Expired";
 
+        var hours = ((int)remaining.TotalHours).ToString(CultureInfo.InvariantCulture);
+        var minutes = remaining.Minutes.ToString("D2", CultureInfo.InvariantCulture);
         var seconds = remaining.Seconds.ToString("D2", CultureInfo.InvariantCulture);
-        if (remaining.TotalHours >= 1)
-        {
-            var hours = ((int)remaining.TotalHours).ToString(CultureInfo.InvariantCulture);
-            var minutes = remaining.Minutes.ToString("D2", CultureInfo.InvariantCulture);
-            return hours + ":" + minutes + ":" + seconds;
-        }
-
-        var mins = ((int)remaining.TotalMinutes).ToString(CultureInfo.InvariantCulture);
-        return mins + ":" + seconds;
+        return hours + ":" + minutes + ":" + seconds;
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>

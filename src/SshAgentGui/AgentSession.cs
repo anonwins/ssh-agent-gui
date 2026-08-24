@@ -82,6 +82,7 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
             _loadedCount = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(LoadedCountText));
+            OnPropertyChanged(nameof(WindowTitle));
         }
     }
 
@@ -89,6 +90,11 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
         IsAgentUnavailable ? "Agent not running"
         : LoadedCount == 1 ? "1 key loaded"
         : $"{LoadedCount} keys loaded";
+
+    public string WindowTitle =>
+        LoadedCount == 0 ? "SSH Agent GUI" : "SSH Agent GUI — " + LoadedCountText;
+
+    public bool CanRefresh => !IsAgentUnavailable && !IsBinaryMissing;
 
     public bool HasKeys => Identities.Count > 0;
 
@@ -103,6 +109,8 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
     public bool CanUseAgent => IsIdle && !IsAgentUnavailable && !IsBinaryMissing;
 
     public bool CanStartAgent => _canStartAgent;
+
+    internal void SetStatus(string text) => StatusText = text;
 
     public string AgentDownDetail => _agentDownDetail;
 
@@ -174,6 +182,19 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
         }
 
         return AddKeyAsync(path, lifetime);
+    }
+
+    public Task RestampLifetimeAsync(SshIdentity identity, TimeSpan? lifetime)
+    {
+        return WithBusy(() =>
+        {
+            var current = FindIdentity(identity.Fingerprint);
+            if (current is null)
+                return Task.FromResult(false);
+            ApplyLifetime(current, lifetime);
+            StatusText = lifetime is null ? "Auto-unload cleared" : "Auto-unload updated";
+            return Task.FromResult(true);
+        });
     }
 
     public async Task<bool> UnloadAsync(SshIdentity identity)
@@ -636,11 +657,16 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
             return;
 
         identity.Path = path;
+        _store.Upsert(identity, path);
+        ApplyLifetime(identity, lifetime);
+    }
+
+    private void ApplyLifetime(SshIdentity identity, TimeSpan? lifetime)
+    {
         identity.Lifetime = lifetime;
         identity.ExpiresAt = ExpiresAtFrom(lifetime);
         identity.LoadGeneration++;
         _expireFail.Remove((identity.Fingerprint, identity.LoadGeneration - 1));
-        _store.Upsert(identity, path);
         _store.SetExpiry(identity.Fingerprint, identity.ExpiresAt, lifetime);
         EnsureTimer();
     }
@@ -779,6 +805,8 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(CanStartAgent));
         OnPropertyChanged(nameof(AgentDownDetail));
         OnPropertyChanged(nameof(LoadedCountText));
+        OnPropertyChanged(nameof(CanRefresh));
+        OnPropertyChanged(nameof(WindowTitle));
     }
 
     private string AgentDownStatus() =>
@@ -831,6 +859,8 @@ internal sealed class AgentSession : INotifyPropertyChanged, IDisposable
             dialog.Owner = owner;
             dialog.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterOwner;
         }
+        else
+            dialog.WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen;
 
         return dialog.ShowDialog() == true ? dialog.Passphrase : null;
     }

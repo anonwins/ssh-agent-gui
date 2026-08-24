@@ -47,7 +47,11 @@ public partial class App : System.Windows.Application
         UiSettings.Load();
         _session = new AgentSession();
         _main = new MainWindow(_session);
-        _tray = new TrayController(_session, () => _main.RestoreFromTray(), () => _ = _main.RequestExitAsync());
+        _tray = new TrayController(
+            _session,
+            () => _main.RestoreFromTray(),
+            () => _main.RequestExitAsync(),
+            () => _session.UnloadAllAsync());
         _single.ShowRequested += () => Dispatcher.BeginInvoke(() => _main.RestoreFromTray());
         _main.Show();
         _ = _session.RefreshAsync();

@@ -1,18 +1,29 @@
 ﻿<Window x:Class="SshAgentGui.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="SSH Agent GUI"
+        xmlns:local="clr-namespace:SshAgentGui"
+        Title="{Binding WindowTitle}"
         Height="580"
         Width="880"
         MinHeight="420"
         MinWidth="720"
         UseLayoutRounding="True"
+        AllowDrop="True"
         Background="{StaticResource BgBrush}"
         Foreground="{StaticResource TextBrush}"
         FontFamily="Segoe UI"
         StateChanged="OnStateChanged"
         SourceInitialized="OnSourceInitialized"
-        Closing="OnClosing">
+        Closing="OnClosing"
+        DragOver="OnDragOver"
+        Drop="OnDrop">
+    <Window.InputBindings>
+        <KeyBinding Gesture="Ctrl+N" Command="{x:Static local:MainWindow.CreateKeyCommand}"/>
+        <KeyBinding Gesture="Ctrl+O" Command="{x:Static local:MainWindow.LoadKeyCommand}"/>
+        <KeyBinding Key="F5" Command="{x:Static local:MainWindow.RefreshCommand}"/>
+        <KeyBinding Key="Escape" Command="{x:Static local:MainWindow.HideCommand}"/>
+        <KeyBinding Key="Delete" Command="{x:Static local:MainWindow.UnloadSelectedCommand}"/>
+    </Window.InputBindings>
     <DockPanel Background="{StaticResource BgBrush}">
         <Border DockPanel.Dock="Bottom"
                 Background="{StaticResource SurfaceBrush}"
@@ -51,66 +62,66 @@
                                        Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
                         </StackPanel>
                     </Button>
-                    <TextBlock Text="Auto-unload" VerticalAlignment="Center" Margin="16,0,8,0"
-                               Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock Text="Next load" VerticalAlignment="Center" Margin="16,0,8,0"
+                               Foreground="{StaticResource MutedBrush}"
+                               IsEnabled="{Binding IsIdle}"/>
                     <ComboBox x:Name="LifetimeBox"
                               MinHeight="34"
                               VerticalAlignment="Center"
-                              SelectedIndex="0"
                               IsEnabled="{Binding IsIdle}"
+                              SelectionChanged="OnLifetimeChanged"
                               ToolTip="Windows ssh-agent ignores key lifetimes. This app may unload the key while it is running."/>
                 </StackPanel>
                 <Button Grid.Column="1"
                         Style="{StaticResource CountChip}"
                         Click="OnRefreshClick"
-                        IsEnabled="{Binding CanUseAgent}"
+                        IsEnabled="{Binding CanRefresh}"
                         ToolTip="Refresh"
                         HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="{Binding LoadedCountText}" VerticalAlignment="Center"
                                    Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
-                        <TextBlock Style="{StaticResource GlyphSmall}" Text="&#xE72C;"
-                                   VerticalAlignment="Center" Margin="6,0,0,0"/>
+                        <TextBlock Text="&#xE72C;"
+                                   VerticalAlignment="Center" Margin="6,0,0,0"
+                                   RenderTransformOrigin="0.5,0.5">
+                            <TextBlock.RenderTransform>
+                                <RotateTransform/>
+                            </TextBlock.RenderTransform>
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource GlyphSmall}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard x:Name="ChipSpin">
+                                                    <Storyboard RepeatBehavior="Forever">
+                                                        <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
+                                                                         From="0" To="360" Duration="0:0:0.8"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions>
+                                                <StopStoryboard BeginStoryboardName="ChipSpin"/>
+                                            </DataTrigger.ExitActions>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                     </StackPanel>
                 </Button>
             </Grid>
 
             <Grid Grid.Row="2">
-                <ItemsControl ItemsSource="{Binding Identities}"
-                              IsEnabled="{Binding IsIdle}"
-                              Visibility="{Binding HasKeys, Converter={StaticResource BoolToVis}}"
-                              VirtualizingPanel.IsVirtualizing="True"
-                              VirtualizingPanel.VirtualizationMode="Recycling"
-                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                              ScrollViewer.VerticalScrollBarVisibility="Auto">
-                    <ItemsControl.Template>
-                        <ControlTemplate TargetType="ItemsControl">
-                            <ScrollViewer Background="Transparent"
-                                          HorizontalScrollBarVisibility="Disabled"
-                                          VerticalScrollBarVisibility="Auto"
-                                          CanContentScroll="True">
-                                <ItemsPresenter/>
-                            </ScrollViewer>
-                        </ControlTemplate>
-                    </ItemsControl.Template>
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <VirtualizingStackPanel/>
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
+                <ListBox x:Name="KeyList"
+                         ItemsSource="{Binding Identities}"
+                         Visibility="{Binding HasKeys, Converter={StaticResource BoolToVis}}"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Border Padding="10,6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background" Value="Transparent"/>
-                                        <Style.Triggers>
-                                            <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-                                            </Trigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
@@ -120,12 +131,13 @@
                                         <ColumnDefinition Width="*" MinWidth="120"/>
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left"
-                                                VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <local:PackLeftPanel VerticalAlignment="Center" Margin="0,0,8,0"
+                                                         HorizontalAlignment="Stretch">
                                         <Border Style="{StaticResource Pill}">
                                             <TextBlock Text="{Binding KeyType}" Foreground="{StaticResource MutedBrush}" FontSize="11"/>
                                         </Border>
-                                        <TextBlock Text="{Binding DisplayComment}" FontWeight="SemiBold"
+                                        <TextBlock local:PackLeftPanel.IsFill="True"
+                                                   Text="{Binding DisplayComment}" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                                    Margin="0,0,6,0"/>
                                         <Border Style="{StaticResource ExpiryCluster}"
@@ -135,7 +147,19 @@
                                                            Foreground="{StaticResource MutedBrush}"
                                                            FontFamily="Cascadia Mono, Consolas"
                                                            FontSize="11"
-                                                           VerticalAlignment="Center"/>
+                                                           VerticalAlignment="Center"
+                                                           ToolTip="Change auto-unload">
+                                                    <TextBlock.ContextMenu>
+                                                        <ContextMenu ItemsSource="{x:Static local:KeyLifetime.Presets}"
+                                                                     MenuItem.Click="OnRestampClick">
+                                                            <ContextMenu.ItemContainerStyle>
+                                                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                                                    <Setter Property="Header" Value="{Binding Label}"/>
+                                                                </Style>
+                                                            </ContextMenu.ItemContainerStyle>
+                                                        </ContextMenu>
+                                                    </TextBlock.ContextMenu>
+                                                </TextBlock>
                                                 <Button Style="{StaticResource ExpiryReloadButton}"
                                                         Click="OnReloadClick"
                                                         IsEnabled="{Binding CanReload}"
@@ -143,42 +167,39 @@
                                                         ToolTip="Reload key and reset auto-unload">
                                                     <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11"
                                                                Foreground="{StaticResource MutedBrush}"
-                                                               VerticalAlignment="Center" Text="&#xE72C;"/>
+                                                               VerticalAlignment="Center" Text="&#xE117;"/>
                                                 </Button>
                                             </StackPanel>
                                         </Border>
-                                    </StackPanel>
+                                    </local:PackLeftPanel>
                                     <StackPanel Grid.Column="1" Grid.RowSpan="2" Orientation="Horizontal" VerticalAlignment="Center">
                                         <Button Style="{StaticResource RowButton}" Click="OnCopyClick"
-                                                ToolTip="Copy public key" Margin="0,0,6,0">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Style="{StaticResource GlyphSmall}" Text="&#xE8C8;"/>
-                                                <TextBlock Text="Copy" Margin="6,0,0,0" VerticalAlignment="Center"
-                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
-                                            </StackPanel>
+                                                ToolTip="Copy public key" Margin="0,0,6,0"
+                                                IsEnabled="{Binding DataContext.CanUseAgent, RelativeSource={RelativeSource AncestorType=Window}}">
+                                            <TextBlock Style="{StaticResource GlyphSmall}" Text="&#xE8C8;"/>
                                         </Button>
-                                        <Button Style="{StaticResource RowDangerButton}" Click="OnUnloadClick">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Style="{StaticResource GlyphSmall}" Text="&#xE74D;"/>
-                                                <TextBlock Text="Unload" Margin="6,0,0,0" VerticalAlignment="Center"
-                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
-                                            </StackPanel>
+                                        <Button Style="{StaticResource RowDangerButton}" Click="OnUnloadClick"
+                                                ToolTip="Unload"
+                                                IsEnabled="{Binding DataContext.CanUseAgent, RelativeSource={RelativeSource AncestorType=Window}}">
+                                            <TextBlock Style="{StaticResource GlyphSmall}" Text="&#xE74D;"/>
                                         </Button>
                                     </StackPanel>
                                     <TextBlock Grid.Row="1"
                                                Text="{Binding Fingerprint}"
                                                ToolTip="{Binding Fingerprint}"
+                                               Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}"
                                                FontFamily="Cascadia Mono, Consolas"
                                                FontSize="11"
                                                VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
-                                               Margin="0,4,0,0"/>
+                                               Margin="0,4,0,0"
+                                               MouseLeftButtonUp="OnFingerprintClick"/>
                                 </Grid>
                             </Border>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                    </ListBox.ItemTemplate>
+                </ListBox>
 
                 <Border VerticalAlignment="Center" HorizontalAlignment="Stretch" Padding="32">
                     <Border.Style>
@@ -231,6 +252,15 @@
                         <TextBlock Text="Windows OpenSSH ssh-add.exe was not found. Install the OpenSSH Client optional feature."
                                    Foreground="{StaticResource MutedBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                        <Button Click="OnOptionalFeaturesClick"
+                                HorizontalAlignment="Center"
+                                Margin="0,16,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Glyph}" Text="&#xE713;"/>
+                                <TextBlock Text="Optional features" Margin="8,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                 </Border>
 
@@ -252,6 +282,23 @@
                         <TextBlock Text="Create a new key or load an existing file to the agent."
                                    Foreground="{StaticResource MutedBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
+                            <Button Style="{StaticResource PrimaryButton}" Click="OnCreateKeyClick"
+                                    IsEnabled="{Binding CanUseAgent}" Margin="0,0,8,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE948;"/>
+                                    <TextBlock Text="Create key" Margin="8,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Click="OnAddKeyClick" IsEnabled="{Binding CanUseAgent}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE8E5;"/>
+                                    <TextBlock Text="Load key" Margin="8,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </Grid>

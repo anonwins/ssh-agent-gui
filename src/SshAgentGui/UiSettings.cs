@@ -41,6 +41,9 @@ internal sealed class UiSettings
     [JsonPropertyName("saveDir")]
     public string? SaveDir { get; set; }
 
+    [JsonPropertyName("lastLifetimeSeconds")]
+    public int? LastLifetimeSeconds { get; set; }
+
     public static void Load()
     {
         var settings = new UiSettings();
@@ -70,6 +73,7 @@ internal sealed class UiSettings
         to.Maximized = from.Maximized;
         to.OpenDir = from.OpenDir;
         to.SaveDir = from.SaveDir;
+        to.LastLifetimeSeconds = from.LastLifetimeSeconds;
     }
 
     public void Save()
@@ -115,6 +119,17 @@ internal sealed class UiSettings
     public void RememberOpen(string filePath) => Remember(filePath, open: true);
 
     public void RememberSave(string filePath) => Remember(filePath, open: false);
+
+    public void RememberLifetime(TimeSpan? lifetime)
+    {
+        int? seconds = lifetime is { } duration && duration >= TimeSpan.FromSeconds(1)
+            ? (int)duration.TotalSeconds
+            : null;
+        if (LastLifetimeSeconds == seconds)
+            return;
+        LastLifetimeSeconds = seconds;
+        Save();
+    }
 
     private void Remember(string filePath, bool open)
     {

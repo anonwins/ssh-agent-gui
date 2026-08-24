@@ -1,14 +1,27 @@
 ﻿using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
 using SshAgentGui.Ssh;
 
 namespace SshAgentGui;
 
 public partial class MainWindow : Window
 {
+    public static readonly RoutedCommand CreateKeyCommand = new();
+    public static readonly RoutedCommand LoadKeyCommand = new();
+    public static readonly RoutedCommand RefreshCommand = new();
+    public static readonly RoutedCommand HideCommand = new();
+    public static readonly RoutedCommand UnloadSelectedCommand = new();
+
     private readonly AgentSession _session;
     private bool _allowClose;
     private bool _exitPromptOpen;
+    private DispatcherTimer? _copiedTimer;
+    private System.Windows.Controls.Button? _copiedButton;
+    private object? _copiedContent;
 
     internal MainWindow(AgentSession session)
     {
@@ -16,7 +29,12 @@ public partial class MainWindow : Window
         DataContext = session;
         InitializeComponent();
         LifetimeBox.ItemsSource = KeyLifetime.Presets;
-        LifetimeBox.SelectedIndex = 0;
+        LifetimeBox.SelectedItem = KeyLifetime.FromSeconds(UiSettings.Current.LastLifetimeSeconds);
+        CommandBindings.Add(new CommandBinding(CreateKeyCommand, (s, e) => OnCreateKeyClick(s, e), CanUseAgentExecute));
+        CommandBindings.Add(new CommandBinding(LoadKeyCommand, (s, e) => OnAddKeyClick(s, e), CanUseAgentExecute));
+        CommandBindings.Add(new CommandBinding(RefreshCommand, (s, e) => OnRefreshClick(s, e), CanRefreshExecute));
+        CommandBindings.Add(new CommandBinding(HideCommand, (_, _) => HideToTray()));
+        CommandBindings.Add(new CommandBinding(UnloadSelectedCommand, (s, e) => OnUnloadSelected(s, e), CanUseAgentExecute));
     }
 
     public void RestoreFromTray()
@@ -119,6 +137,20 @@ public partial class MainWindow : Window
         _ = RequestExitAsync();
     }
 
+    private void OnLifetimeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded)
+            return;
+        if (LifetimeBox.SelectedItem is KeyLifetime lifetime)
+            UiSettings.Current.RememberLifetime(lifetime.Duration);
+    }
+
+    private void CanUseAgentExecute(object sender, CanExecuteRoutedEventArgs e) =>
+        e.CanExecute = _session.CanUseAgent;
+
+    private void CanRefreshExecute(object sender, CanExecuteRoutedEventArgs e) =>
+        e.CanExecute = _session.CanRefresh;
+
     private async void OnRefreshClick(object sender, RoutedEventArgs e) =>
         await _session.RefreshAsync().ConfigureAwait(true);
 
@@ -130,8 +162,7 @@ public partial class MainWindow : Window
         var path = KeyFileDialog.OpenExisting("Load key");
         if (path is null)
             return;
-        var lifetime = LifetimeBox.SelectedItem as KeyLifetime;
-        await _session.AddKeyAsync(path, lifetime?.Duration).ConfigureAwait(true);
+        await _session.AddKeyAsync(path, SelectedLifetime()).ConfigureAwait(true);
     }
 
     private async void OnCreateKeyClick(object sender, RoutedEventArgs e)
@@ -144,18 +175,27 @@ public partial class MainWindow : Window
 
     private async void OnCopyClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: SshIdentity identity })
+        if (sender is not System.Windows.Controls.Button { DataContext: SshIdentity identity } button)
             return;
 
         var line = await _session.GetPublicKeyAsync(identity).ConfigureAwait(true);
         if (string.IsNullOrWhiteSpace(line))
             return;
         System.Windows.Clipboard.SetText(line);
+        FlashCopied(button);
     }
 
     private async void OnUnloadClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: SshIdentity identity })
+            return;
+
+        await _session.UnloadAsync(identity).ConfigureAwait(true);
+    }
+
+    private async void OnUnloadSelected(object sender, RoutedEventArgs e)
+    {
+        if (KeyList.SelectedItem is not SshIdentity identity)
             return;
 
         await _session.UnloadAsync(identity).ConfigureAwait(true);
@@ -168,4 +208,110 @@ public partial class MainWindow : Window
 
         await _session.ReloadKeyAsync(identity).ConfigureAwait(true);
     }
+
+    private async void OnRestampClick(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is not MenuItem { DataContext: KeyLifetime lifetime })
+            return;
+        if (sender is not ContextMenu { PlacementTarget: FrameworkElement { DataContext: SshIdentity identity } })
+            return;
+
+        await _session.RestampLifetimeAsync(identity, lifetime.Duration).ConfigureAwait(true);
+    }
+
+    private void OnFingerprintClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: SshIdentity identity })
+            return;
+
+        System.Windows.Clipboard.SetText(identity.Fingerprint);
+        _session.SetStatus("Fingerprint copied");
+    }
+
+    private void OnOptionalFeaturesClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo("ms-settings:optionalfeatures") { UseShellExecute = true });
+        }
+        catch
+        {
+            _session.SetStatus("Could not open Optional features.");
+        }
+    }
+
+    private void OnDragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Effects = HasDroppableKey(e) ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void OnDrop(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!TryGetDroppedFiles(e, out var files))
+            return;
+
+        var lifetime = SelectedLifetime();
+        foreach (var path in files)
+        {
+            if (!IsDroppableKey(path))
+                continue;
+            await _session.AddKeyAsync(path, lifetime).ConfigureAwait(true);
+        }
+    }
+
+    private TimeSpan? SelectedLifetime() =>
+        (LifetimeBox.SelectedItem as KeyLifetime)?.Duration;
+
+    private void FlashCopied(System.Windows.Controls.Button button)
+    {
+        if (_copiedTimer is not null && _copiedButton is not null)
+        {
+            _copiedTimer.Stop();
+            _copiedButton.Content = _copiedContent;
+        }
+
+        _copiedButton = button;
+        _copiedContent = button.Content;
+        button.Content = new TextBlock
+        {
+            Text = "Copied",
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _copiedTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _copiedTimer.Tick += (_, _) =>
+        {
+            _copiedTimer?.Stop();
+            if (_copiedButton is not null)
+                _copiedButton.Content = _copiedContent;
+            _copiedTimer = null;
+            _copiedButton = null;
+            _copiedContent = null;
+        };
+        _copiedTimer.Start();
+    }
+
+    private static bool HasDroppableKey(System.Windows.DragEventArgs e)
+    {
+        if (!TryGetDroppedFiles(e, out var files))
+            return false;
+        return files.Any(IsDroppableKey);
+    }
+
+    private static bool TryGetDroppedFiles(System.Windows.DragEventArgs e, out string[] files)
+    {
+        files = [];
+        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+            return false;
+        if (e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] dropped)
+            return false;
+        files = dropped;
+        return true;
+    }
+
+    private static bool IsDroppableKey(string path) =>
+        !string.IsNullOrWhiteSpace(path)
+        && File.Exists(path)
+        && !path.EndsWith(".pub", StringComparison.OrdinalIgnoreCase);
 }

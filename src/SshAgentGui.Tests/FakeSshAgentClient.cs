@@ -9,6 +9,7 @@ internal sealed class FakeSshAgentClient : ISshAgentClient
     public SshAgentResult? RemoveOverride { get; set; }
     public SshAgentResult? AddOverride { get; set; }
     public int RemoveCalls { get; private set; }
+    public int AddCalls { get; private set; }
     public string? LastRemovedPath { get; private set; }
 
     public Task<SshAgentResult<List<SshIdentity>>> ListAsync(CancellationToken cancellationToken = default)
@@ -28,7 +29,13 @@ internal sealed class FakeSshAgentClient : ISshAgentClient
         string keyPath,
         string? passphrase = null,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult(AddOverride ?? SshAgentResult.Success());
+        Task.FromResult(Add());
+
+    private SshAgentResult Add()
+    {
+        AddCalls++;
+        return AddOverride ?? SshAgentResult.Success();
+    }
 
     public Task<SshAgentResult> RemoveAsync(string keyPath, CancellationToken cancellationToken = default)
     {

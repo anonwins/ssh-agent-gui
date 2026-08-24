@@ -12,8 +12,37 @@ public sealed class AutoUnloadTests
         Assert.Equal("", SshIdentity.FormatExpiry(null, now));
         Assert.Equal("Expired", SshIdentity.FormatExpiry(now.AddMinutes(-1), now));
         Assert.Equal("2:30:00", SshIdentity.FormatExpiry(now.AddHours(2.5), now));
-        Assert.Equal("25:00", SshIdentity.FormatExpiry(now.AddMinutes(25), now));
-        Assert.Equal("0:30", SshIdentity.FormatExpiry(now.AddSeconds(30), now));
+        Assert.Equal("0:25:00", SshIdentity.FormatExpiry(now.AddMinutes(25), now));
+        Assert.Equal("0:00:30", SshIdentity.FormatExpiry(now.AddSeconds(30), now));
+    }
+
+    [Fact]
+    public async Task Restamp_updates_expiry_without_ssh_add()
+    {
+        using var session = CreateSession(out var client, out var store);
+        var identity = new SshIdentity("fp-re", "comment", "ED25519", 256)
+        {
+            Lifetime = TimeSpan.FromMinutes(30),
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10),
+            LoadGeneration = 2,
+        };
+        session.Identities.Add(identity);
+        store.Upsert(identity, @"C:\keys\id");
+
+        await session.RestampLifetimeAsync(identity, TimeSpan.FromHours(1));
+
+        Assert.Equal(TimeSpan.FromHours(1), session.Identities[0].Lifetime);
+        Assert.Equal(3, session.Identities[0].LoadGeneration);
+        Assert.True(session.Identities[0].ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(50));
+        Assert.Equal(3600, store.TryGet("fp-re")?.LifetimeSeconds);
+        Assert.Equal(0, client.AddCalls);
+        Assert.Equal(0, client.RemoveCalls);
+
+        await session.RestampLifetimeAsync(identity, null);
+        Assert.Null(session.Identities[0].Lifetime);
+        Assert.Null(session.Identities[0].ExpiresAt);
+        Assert.Null(store.TryGet("fp-re")?.LifetimeSeconds);
+        Assert.Equal(0, client.AddCalls);
     }
 
     [Fact]

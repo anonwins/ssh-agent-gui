@@ -26,7 +26,6 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="100"/>
@@ -40,16 +39,20 @@
             <TextBlock Text="New OpenSSH key" FontSize="16" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center"/>
         </StackPanel>
 
-        <Label Grid.Row="2" Grid.Column="0" Content="Type"/>
+        <Label Grid.Row="2" Grid.Column="0" Content="Type"
+               VerticalAlignment="Center" Margin="0,0,0,10"/>
         <ComboBox x:Name="TypeBox" Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2"
-                  Margin="0,0,0,10" SelectedIndex="0" SelectionChanged="OnTypeChanged">
+                  VerticalAlignment="Center" Margin="0,0,0,10" SelectedIndex="0" SelectionChanged="OnTypeChanged">
             <ComboBoxItem Content="Ed25519"/>
             <ComboBoxItem Content="RSA 4096"/>
         </ComboBox>
 
-        <Label Grid.Row="3" Grid.Column="0" Content="File"/>
-        <TextBox x:Name="PathBox" Grid.Row="3" Grid.Column="1" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <Button Grid.Row="3" Grid.Column="2" Click="OnBrowseClick" Margin="0,0,0,10" VerticalAlignment="Center">
+        <Label Grid.Row="3" Grid.Column="0" Content="File"
+               VerticalAlignment="Center" Margin="0,0,0,10"/>
+        <TextBox x:Name="PathBox" Grid.Row="3" Grid.Column="1"
+                 VerticalAlignment="Center" Margin="0,0,8,10"/>
+        <Button Grid.Row="3" Grid.Column="2" Click="OnBrowseClick"
+                VerticalAlignment="Center" Margin="0,0,0,10">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Style="{StaticResource Glyph}" Text="&#xE8B7;"/>
                 <TextBlock Text="Browse" Margin="8,0,0,0" VerticalAlignment="Center"
@@ -57,14 +60,20 @@
             </StackPanel>
         </Button>
 
-        <Label Grid.Row="4" Grid.Column="0" Content="Comment"/>
-        <TextBox x:Name="CommentBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,10"/>
+        <Label Grid.Row="4" Grid.Column="0" Content="Comment"
+               VerticalAlignment="Center" Margin="0,0,0,10"/>
+        <TextBox x:Name="CommentBox" Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2"
+                 VerticalAlignment="Center" Margin="0,0,0,10"/>
 
-        <Label Grid.Row="5" Grid.Column="0" Content="Passphrase"/>
-        <PasswordBox x:Name="PassphraseBox" Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,10"/>
+        <Label Grid.Row="5" Grid.Column="0" Content="Passphrase"
+               VerticalAlignment="Center" Margin="0,0,0,10"/>
+        <PasswordBox x:Name="PassphraseBox" Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2"
+                     VerticalAlignment="Center" Margin="0,0,0,10" PasswordChanged="OnPassphraseChanged"/>
 
-        <Label Grid.Row="6" Grid.Column="0" Content="Confirm"/>
-        <PasswordBox x:Name="ConfirmBox" Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,0,0,10"/>
+        <Label Grid.Row="6" Grid.Column="0" Content="Confirm"
+               VerticalAlignment="Center" Margin="0,0,0,10"/>
+        <PasswordBox x:Name="ConfirmBox" Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="2"
+                     VerticalAlignment="Center" Margin="0,0,0,10" PasswordChanged="OnPassphraseChanged"/>
 
         <CheckBox x:Name="LoadBox" Grid.Row="7" Grid.Column="1" Grid.ColumnSpan="2"
                   Margin="0,4,0,10" Content="Load into agent now" IsChecked="True"/>
@@ -73,8 +82,9 @@
                VerticalAlignment="Center" Margin="0,0,0,10"
                IsEnabled="{Binding IsChecked, ElementName=LoadBox}"/>
         <ComboBox x:Name="LifetimeBox" Grid.Row="8" Grid.Column="1" Grid.ColumnSpan="2"
-                  VerticalAlignment="Center" Margin="0,0,0,10" SelectedIndex="0"
+                  VerticalAlignment="Center" Margin="0,0,0,10"
                   IsEnabled="{Binding IsChecked, ElementName=LoadBox}"
+                  SelectionChanged="OnLifetimeChanged"
                   ToolTip="Windows ssh-agent ignores key lifetimes. This app may unload the key while it is running."/>
 
         <TextBlock x:Name="ErrorText" Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="3"
