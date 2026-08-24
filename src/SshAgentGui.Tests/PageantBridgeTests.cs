@@ -98,6 +98,53 @@ public sealed class PageantBridgeTests
         Assert.Equal(expected, response);
     }
 
+    [Theory]
+    [InlineData(17)]
+    [InlineData(18)]
+    [InlineData(19)]
+    [InlineData(22)]
+    [InlineData(23)]
+    [InlineData(27)]
+    public void Disallowed_type_does_not_call_pipe(byte type)
+    {
+        var pipe = new RecordingPipe();
+        var frame = SshAgentFrame.Prefix(type, []);
+        var response = PageantDispatch.Handle(frame, pipe, (_, _) => true);
+        Assert.Equal(SshAgentFrame.Failure(), response);
+        Assert.Empty(pipe.Requests);
+    }
+
+    [Fact]
+    public void Ssh1_challenge_is_local_failure()
+    {
+        var pipe = new RecordingPipe();
+        var frame = SshAgentFrame.Prefix(SshAgentFrame.Ssh1Challenge, []);
+        var response = PageantDispatch.Handle(frame, pipe, (_, _) => true);
+        Assert.Equal(SshAgentFrame.Failure(), response);
+        Assert.Empty(pipe.Requests);
+    }
+
+    [Fact]
+    public void Truncated_frame_returns_null()
+    {
+        var pipe = new RecordingPipe();
+        Assert.Null(PageantDispatch.Handle([0, 0, 0, 2, 11], pipe, (_, _) => true));
+        Assert.Empty(pipe.Requests);
+    }
+
+    [Fact]
+    public void Oversized_declared_length_returns_null()
+    {
+        var pipe = new RecordingPipe();
+        var frame = new byte[8];
+        frame[0] = 0x00;
+        frame[1] = 0x04;
+        frame[2] = 0x00;
+        frame[3] = 0x01;
+        Assert.Null(PageantDispatch.Handle(frame, pipe, (_, _) => true));
+        Assert.Empty(pipe.Requests);
+    }
+
     [Fact]
     public void Sign_allow_forwards_original_bytes()
     {
@@ -215,6 +262,36 @@ public sealed class PageantBridgeTests
         Assert.False(confirmed);
         Assert.Single(agent.Requests);
         Assert.Equal(reply, response);
+    }
+
+    [Fact]
+    public async Task Pageant_pipe_read_timeout_drops_idle_client()
+    {
+        var name = "ssh-agent-gui-pageant-idle-" + Guid.NewGuid().ToString("n");
+        var agent = new RecordingPipe();
+        using var server = new PageantPipeServer(name, agent, (_, _) => true, TimeSpan.FromMilliseconds(200));
+        server.Start();
+
+        using var client = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous);
+        var connected = false;
+        for (var i = 0; i < 50 && !connected; i++)
+        {
+            try
+            {
+                await client.ConnectAsync(100);
+                connected = true;
+            }
+            catch (TimeoutException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        Assert.True(connected);
+        await Task.Delay(600);
+        Assert.Empty(agent.Requests);
     }
 
     [Fact]

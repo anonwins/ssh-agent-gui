@@ -12,6 +12,10 @@ public sealed class AskPassModeTests
     [InlineData(new string[0], "1", null, false)]
     [InlineData(new string[0], null, null, false)]
     [InlineData(new string[0], "0", null, false)]
+    [InlineData(new string[0], null, "ssh-agent-gui-abc", false)]
+    [InlineData(new string[0], "0", "ssh-agent-gui-abc", false)]
+    [InlineData(new[] { "--start-ssh-agent" }, "1", null, false)]
+    [InlineData(new[] { "--start-ssh-agent" }, "1", "ssh-agent-gui-abc", false)]
     public void IsLaunch_table(string[] args, string? launchEnv, string? pipeName, bool expected) =>
         Assert.Equal(expected, AskPassMode.IsLaunch(args, launchEnv, pipeName));
 
@@ -20,6 +24,14 @@ public sealed class AskPassModeTests
     {
         var prompt = AskPassMode.SanitizePrompt(@"Enter passphrase for C:\Users\me\.ssh\id_ed25519:");
         Assert.DoesNotContain(@"C:\Users", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("id_ed25519", prompt, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SanitizePrompt_keeps_unc_filename_only()
+    {
+        var prompt = AskPassMode.SanitizePrompt(@"Enter passphrase for \\server\share\id_ed25519:");
+        Assert.DoesNotContain(@"\\server", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("id_ed25519", prompt, StringComparison.Ordinal);
     }
 }

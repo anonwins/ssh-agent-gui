@@ -66,6 +66,18 @@ Settings are stored under `%AppData%\SshAgentGui\`.
 
 The app uses the Windows OpenSSH binaries under `%SystemRoot%\System32\OpenSSH\` (with a fallback to `%ProgramFiles%\OpenSSH`), not whatever happens to be on `PATH`.
 
+## Security
+
+- This GUI does not store private keys or passphrases. Windows OpenSSH performs cryptographic operations.
+- Passphrases cross to OpenSSH over a short-lived current-user named pipe. The connecting process must belong to the `ssh-add` / `ssh-keygen` we started.
+- Pageant list and sign are supported; every **signature** asks Allow or Deny. Caller names are not identity proof.
+- OpenSSH is resolved from fixed install locations, not `PATH`. Binaries are not signature-checked.
+- Same-user malware, a compromised Windows account, and Microsoft OpenSSH remain outside what this app can guarantee.
+
+Details: [SECURITY.md](SECURITY.md), [threat model](docs/THREAT_MODEL.md), [architecture](docs/SECURITY_ARCHITECTURE.md).
+
+When a tagged GitHub Release exists, verify the `SHA256SUMS` file against the zip. See [docs/RELEASE.md](docs/RELEASE.md). CI and CodeQL run on `master`; repository setting notes are in [docs/REPO_HARDENING.md](docs/REPO_HARDENING.md).
+
 ## Notes
 
 **Auto-unload** is enforced by this app while it is running. Windows `ssh-agent` does not honor `ssh-add -t` lifetimes, so the GUI unloads keys on a timer instead. The toolbar **Auto-unload** combo sets the default for the next key you load; change a loaded key from its countdown in the list. If you fully quit the app, keys stay loaded. The same applies after a crash, sleep, or if another tool reloads a key.

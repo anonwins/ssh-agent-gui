@@ -149,14 +149,7 @@ internal sealed class TrackedKeyStore
 
     private void Save()
     {
-        var dir = Path.GetDirectoryName(_filePath);
-        if (!string.IsNullOrEmpty(dir))
-            Directory.CreateDirectory(dir);
-
-        var tmp = _filePath + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(_items, JsonOptions));
-        File.Copy(tmp, _filePath, overwrite: true);
-        File.Delete(tmp);
+        AtomicFile.WriteAllText(_filePath, JsonSerializer.Serialize(_items, JsonOptions));
         _dirty = false;
     }
 }

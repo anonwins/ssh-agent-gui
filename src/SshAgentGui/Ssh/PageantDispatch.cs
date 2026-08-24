@@ -12,6 +12,9 @@ internal static class PageantDispatch
         if (SshAgentFrame.IsSsh1(type))
             return SshAgentFrame.Failure();
 
+        if (!IsAllowedPageantRequest(type))
+            return SshAgentFrame.Failure();
+
         if (type == SshAgentFrame.SignRequest)
         {
             if (!SshAgentFrame.TryGetSignKeyBlob(body, out var blob))
@@ -29,4 +32,7 @@ internal static class PageantDispatch
 
         return pipe.Transact(frame) ?? SshAgentFrame.Failure();
     }
+
+    private static bool IsAllowedPageantRequest(byte type) =>
+        type is SshAgentFrame.RequestIdentities or SshAgentFrame.SignRequest;
 }

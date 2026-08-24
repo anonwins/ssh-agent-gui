@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        run: dotnet test SshAgentGui.sln --configuration Release
+
+      - name: Publish
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = $tag -replace '^v',''
+          $sha = $env:GITHUB_SHA
+          echo "VERSION=$version" >> $env:GITHUB_ENV
+          dotnet publish src/SshAgentGui/SshAgentGui.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -p:Version=$version `
+            -p:InformationalVersion="$version+$sha" `
+            -o publish
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $zip = "SshAgentGui-$env:VERSION-win-x64.zip"
+          Compress-Archive -Path "publish\*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
+          "${hash}  ${zip}" | Set-Content -Path SHA256SUMS.txt -Encoding ascii
+          echo "ZIP=$zip" >> $env:GITHUB_ENV
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm') + ' UTC'
+          $body = "Source commit: $env:GITHUB_SHA`nWorkflow: $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID`nRuntime: net9.0-windows, win-x64, framework-dependent`nBuild date: $date`n`nVerify the zip with SHA256SUMS.txt. Binaries are not Authenticode signed."
+          gh release create $env:GITHUB_REF_NAME `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "SSH Agent GUI $env:VERSION" `
+            --notes $body `
+            $env:ZIP `
+            SHA256SUMS.txt

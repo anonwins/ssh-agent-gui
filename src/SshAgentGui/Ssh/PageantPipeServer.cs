@@ -7,17 +7,20 @@ internal sealed class PageantPipeServer : IDisposable
     private readonly string _name;
     private readonly IOpenSshAgentPipe _agent;
     private readonly PageantConfirm _confirm;
+    private readonly TimeSpan _ioTimeout;
     private const int Listeners = 3;
+    private static readonly TimeSpan DefaultIoTimeout = TimeSpan.FromSeconds(30);
     private readonly CancellationTokenSource _cts = new();
     private Task? _loop;
     private NamedPipeServerStream? _listening;
     private bool _disposed;
 
-    public PageantPipeServer(string name, IOpenSshAgentPipe agent, PageantConfirm confirm)
+    public PageantPipeServer(string name, IOpenSshAgentPipe agent, PageantConfirm confirm, TimeSpan? ioTimeout = null)
     {
         _name = name;
         _agent = agent;
         _confirm = confirm;
+        _ioTimeout = ioTimeout ?? DefaultIoTimeout;
     }
 
     public void Start() =>
@@ -117,16 +120,18 @@ internal sealed class PageantPipeServer : IDisposable
         }
     }
 
-    private static async Task<byte[]?> ReadExactAsync(
+    private async Task<byte[]?> ReadExactAsync(
         PipeStream pipe,
         int count,
         CancellationToken cancellationToken)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(_ioTimeout);
         var buffer = new byte[count];
         var read = 0;
         while (read < count)
         {
-            var n = await pipe.ReadAsync(buffer.AsMemory(read, count - read), cancellationToken).ConfigureAwait(false);
+            var n = await pipe.ReadAsync(buffer.AsMemory(read, count - read), timeout.Token).ConfigureAwait(false);
             if (n <= 0)
                 return null;
             read += n;

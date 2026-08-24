@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SshAgentGui.Ssh;
 
 namespace SshAgentGui.Tests;
@@ -48,6 +49,72 @@ public sealed class OpenSshResolveTests
         {
             Directory.Delete(root, recursive: true);
             Directory.Delete(other, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Rejects_reparse_root()
+    {
+        var target = Path.Combine(Path.GetTempPath(), "ssh-agent-gui-reparse-tgt-" + Guid.NewGuid().ToString("n"));
+        var junction = Path.Combine(Path.GetTempPath(), "ssh-agent-gui-reparse-junc-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(target);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(target, "ssh-add.exe"), [0]);
+            if (!TryCreateJunction(junction, target))
+                return;
+
+            Assert.Null(OpenSshProcess.ResolveOpenSshExecutable("ssh-add.exe", [junction]));
+        }
+        finally
+        {
+            TryDeleteJunction(junction);
+            if (Directory.Exists(target))
+                Directory.Delete(target, recursive: true);
+        }
+    }
+
+    private static bool TryCreateJunction(string junction, string target)
+    {
+        try
+        {
+            Directory.CreateSymbolicLink(junction, target);
+            return Directory.Exists(junction);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c mklink /J \"{junction}\" \"{target}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            if (process is null)
+                return false;
+            if (!process.WaitForExit(5000))
+                return false;
+            return process.ExitCode == 0 && Directory.Exists(junction);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void TryDeleteJunction(string junction)
+    {
+        try
+        {
+            if (Directory.Exists(junction))
+                Directory.Delete(junction);
+        }
+        catch
+        {
         }
     }
 }

@@ -13,6 +13,8 @@
     <AssemblyTitle>SSH Agent GUI</AssemblyTitle>
     <RootNamespace>SshAgentGui</RootNamespace>
     <AssemblyName>SshAgentGui</AssemblyName>
+    <Version>0.1.0</Version>
+    <InformationalVersion>0.1.0</InformationalVersion>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 

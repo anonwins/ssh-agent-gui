@@ -161,21 +161,7 @@ internal static class OpenSshProcess
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
             }
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = exe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                WorkingDirectory = Path.GetDirectoryName(exe)!,
-            };
-            foreach (var arg in arguments)
-                psi.ArgumentList.Add(arg);
-
+            var psi = CreateHiddenStartInfo(exe, arguments);
             ConfigureChildEnvironment(psi, pipeName, askPass);
             configure?.Invoke(psi);
 
@@ -213,6 +199,25 @@ internal static class OpenSshProcess
         }
     }
 
+    internal static ProcessStartInfo CreateHiddenStartInfo(string exe, IReadOnlyList<string> arguments)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = exe,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            WorkingDirectory = Path.GetDirectoryName(exe)!,
+        };
+        foreach (var arg in arguments)
+            psi.ArgumentList.Add(arg);
+        return psi;
+    }
+
     private static async Task ServeAskPassAsync(
         NamedPipeServerStream pipe,
         string passphrase,
@@ -220,7 +225,8 @@ internal static class OpenSshProcess
         CancellationToken cancellationToken)
     {
         var payload = Utf8NoBom.GetBytes(passphrase);
-        for (var i = 0; i < MaxAskPassAccepts; i++)
+        var writes = 0;
+        while (writes < MaxAskPassAccepts && !cancellationToken.IsCancellationRequested)
         {
             if (process.HasExited)
                 return;
@@ -234,8 +240,12 @@ internal static class OpenSshProcess
             await connect.ConfigureAwait(false);
             try
             {
+                if (!ProcessAncestry.IsTrustedPipeClient(pipe.SafePipeHandle, process.Id, out _))
+                    continue;
+
                 await pipe.WriteAsync(payload, cancellationToken).ConfigureAwait(false);
                 await pipe.FlushAsync(cancellationToken).ConfigureAwait(false);
+                writes++;
             }
             finally
             {
@@ -289,7 +299,7 @@ internal static class OpenSshProcess
             if (!File.Exists(candidate))
                 continue;
             // Defense-in-depth only; not binary authenticity.
-            if (IsReparsePoint(candidate) || HasReparseBelowRoot(fullRoot, candidate))
+            if (IsReparsePoint(fullRoot) || IsReparsePoint(candidate) || HasReparseBelowRoot(fullRoot, candidate))
                 continue;
             return candidate;
         }

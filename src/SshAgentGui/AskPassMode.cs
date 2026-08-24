@@ -10,6 +10,7 @@ internal static class AskPassMode
     public const string LaunchEnv = "SSH_AGENT_GUI_ASKPASS";
     public const string PipeEnv = "SSH_AGENT_GUI_PASSPHRASE_PIPE";
     public const string LegacyFileEnv = "SSH_AGENT_GUI_PASSPHRASE_FILE";
+    internal const int MaxPassphraseBytes = 16384;
 
     private static readonly Regex WinPath = new(
         @"[A-Za-z]:\\(?:[^\\/:*?""<>|\r\n]+\\)*[^\\/:*?""<>|\r\n]+",
@@ -26,11 +27,11 @@ internal static class AskPassMode
     {
         if (args.Count > 0 && string.Equals(args[0], Flag, StringComparison.Ordinal))
             return true;
-        if (!string.IsNullOrWhiteSpace(pipeName))
-            return true;
+        if (args.Count > 0 && string.Equals(args[0], StartAgentServiceMode.Flag, StringComparison.Ordinal))
+            return false;
         if (!string.Equals(launchEnv, "1", StringComparison.Ordinal))
             return false;
-        return ExtraArgCount(args) > 0;
+        return ExtraArgCount(args) > 0 || !string.IsNullOrWhiteSpace(pipeName);
     }
 
     public static int Run(IReadOnlyList<string> args)
@@ -64,7 +65,17 @@ internal static class AskPassMode
             using var client = new NamedPipeClientStream(".", name, PipeDirection.In, PipeOptions.CurrentUserOnly);
             client.Connect(5000);
             using var buffer = new MemoryStream();
-            client.CopyTo(buffer);
+            var chunk = new byte[1024];
+            var total = 0;
+            int n;
+            while ((n = client.Read(chunk, 0, chunk.Length)) > 0)
+            {
+                total += n;
+                if (total > MaxPassphraseBytes)
+                    return false;
+                buffer.Write(chunk, 0, n);
+            }
+
             secret = Utf8NoBom.GetString(buffer.ToArray());
             return true;
         }
