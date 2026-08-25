@@ -26,10 +26,25 @@ jobs:
 
       - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         with:
-          results_file: results.sarif
-          results_format: sarif
           publish_results: ${{ github.event_name != 'pull_request' && github.repository_visibility == 'public' }}
 
-      - uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
-        with:
-          sarif_file: results.sarif
+      # Scorecard policy scores are not code defects. Do not upload them to Code Scanning.
+      # Close any leftover Scorecard rows so the Security tab stays CodeQL-only.
+      - name: Clear Scorecard rows from Code Scanning
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          nums="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open" \
+            --jq '.[] | select((.tool.name // "" | ascii_downcase) | test("scorecard")) | .number')"
+          if [ -z "${nums}" ]; then
+            echo "No open Scorecard alerts"
+            exit 0
+          fi
+          while IFS= read -r n; do
+            echo "Dismissing Scorecard alert #${n}"
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/code-scanning/alerts/${n}" \
+              -f state=dismissed \
+              -f dismissed_reason="won't fix" \
+              -f dismissed_comment="Scorecard policy score, not a code defect. Tracked on Actions and api.scorecard.dev."
+          done <<< "${nums}"

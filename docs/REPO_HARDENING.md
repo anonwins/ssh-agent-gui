@@ -22,7 +22,7 @@ Enabled. [SECURITY.md](../SECURITY.md) uses GitHub Advisories.
 
 ## Code scanning
 
-This public repository already receives CodeQL and Scorecard SARIF on `master`. Confirm results at [Code scanning](https://github.com/anonwins/ssh-agent-gui/security/code-scanning). A private fork would need GitHub Advanced Security for that UI.
+[Code scanning](https://github.com/anonwins/ssh-agent-gui/security/code-scanning) is **CodeQL only**. Scorecard policy scores (License, Fuzzing, Code-Review, and so on) are not code defects and are not uploaded there. A private fork would need GitHub Advanced Security for that UI.
 
 ## Why Actions are pinned to commit SHAs
 
@@ -36,22 +36,13 @@ Write scopes belong on the **job**, not the workflow:
 
 - CI: workflow `contents: read` only. No secrets.
 - CodeQL: workflow `contents: read` + `actions: read`; job `security-events: write` to upload results.
-- Scorecard: workflow `permissions: read-all`; job `security-events: write`, `id-token: write`, `contents: read`, and `actions: read`. No workflow-level write and no top-level `env:`.
+- Scorecard: workflow `permissions: read-all`; job `security-events: write` (to clear leftover policy rows), `id-token: write`, `contents: read`, and `actions: read`. No SARIF upload, no workflow-level write, and no top-level `env:`.
 - Release: workflow `contents: read`; job `contents: write` on **tag pushes only**. Pull requests never see this workflow.
 
 There is no `pull_request_target` workflow.
 
 ## Scorecard
 
-Token-Permissions is already a pass (job-level writes). A low overall score is still expected until a LICENSE exists (legal choice — not added here) and a signed release exists. Do not add CODEOWNERS or a badge just to raise the number.
+Scorecard still runs and publishes to [api.scorecard.dev](https://api.scorecard.dev/projects/github.com/anonwins/ssh-agent-gui). A low number is expected without a LICENSE, a second reviewer, fuzzing, or a signed release. That is not a Code Scanning finding and does not belong on the Security tab.
 
-Accepted leftovers (not defects in this app):
-
-- **License** — add a LICENSE only after choosing one
-- **Fuzzing** — out of scope
-- **Code-Review** — solo maintainer; requiring PRs helps, a second human would be needed to pass honestly
-- **CII-Best-Practices** — optional OpenSSF Best Practices badge
-- **Maintained** — Scorecard treats repos younger than 90 days as unmaintained
-- **Branch-Protection** (Scorecard alert) — the **Protect master** ruleset is the real control. On a public repo Scorecard often cannot *read* rulesets/classic protection with `GITHUB_TOKEN` (it still says protection is off). An optional `SCORECARD_TOKEN` PAT (`repo_token` on the Scorecard job) would let the check see them; do not add a PAT unless you want that alert gone.
-
-Do not dismiss Scorecard alerts just to clear the Security tab.
+The **Protect master** ruleset is the real branch-protection control. Scorecard often cannot read rulesets on a public repo without a `SCORECARD_TOKEN` PAT; do not add a PAT just to raise the number. Do not add CODEOWNERS or a Best Practices badge just to raise the number.
