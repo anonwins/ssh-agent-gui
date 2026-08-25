@@ -2,9 +2,7 @@
 
 ## Supported versions
 
-Security fixes are developed on the default branch (`master`). There are **no published GitHub Releases yet**; build from source at the commit you trust.
-
-After the first tagged release (`v*.*.*`), supported versions will be **the latest tag** and, at maintainer discretion, the previous tag for a limited time. Older commits and fork builds are unsupported.
+Security fixes are developed on the default branch (`master`). Supported published builds are **the latest tag** and, at maintainer discretion, the previous tag for a limited time. Older commits and fork builds are unsupported.
 
 ## Reporting a vulnerability
 
@@ -12,7 +10,7 @@ Report security issues through [GitHub Security Advisories](https://github.com/a
 
 There is no security contact email in this repository. Private vulnerability reporting is enabled — do not file exploit details in a public issue.
 
-Please allow **7 days** for an initial response and **30 days** for a fix or a documented decision on `master`. Do not expect coordinated disclosure dates until tagged releases exist.
+Please allow **7 days** for an initial response and **30 days** for a fix or a documented decision on `master`. Coordinated disclosure dates may be set for the latest tag.
 
 ## In scope
 

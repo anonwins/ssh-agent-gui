@@ -21,12 +21,15 @@ Built for developers who use Git, SSH, and WSL on Windows and want something clo
 ## Requirements
 
 - Windows 10 or 11
+- [.NET 9 Windows Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0) (needed to run the GitHub Release zip)
 - [OpenSSH Client](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse) installed
 - The `ssh-agent` Windows service available (Manual start is fine)
 
 ## Getting started
 
-There are no published releases yet. Build from source:
+Download [the latest GitHub Release](https://github.com/anonwins/ssh-agent-gui/releases/latest) (`SshAgentGui-0.1.0-win-x64.zip`) and verify it with `SHA256SUMS.txt`. See [docs/RELEASE.md](docs/RELEASE.md).
+
+Or build from source:
 
 ```bat
 dotnet test SshAgentGui.sln
@@ -76,7 +79,7 @@ The app uses the Windows OpenSSH binaries under `%SystemRoot%\System32\OpenSSH\`
 
 Details: [SECURITY.md](SECURITY.md), [threat model](docs/THREAT_MODEL.md), [architecture](docs/SECURITY_ARCHITECTURE.md).
 
-When a tagged GitHub Release exists, verify the `SHA256SUMS` file against the zip. See [docs/RELEASE.md](docs/RELEASE.md). CI and CodeQL run on `master`; repository setting notes are in [docs/REPO_HARDENING.md](docs/REPO_HARDENING.md).
+Verify the `SHA256SUMS` file on the GitHub Release against the zip. See [docs/RELEASE.md](docs/RELEASE.md). CI and CodeQL run on `master`; repository setting notes are in [docs/REPO_HARDENING.md](docs/REPO_HARDENING.md).
 
 ## Notes
 
