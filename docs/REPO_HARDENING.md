@@ -4,7 +4,7 @@ This file lists GitHub settings the workflows cannot apply by themselves.
 
 ## Branch protection (`master`)
 
-In Settings → Branches (or Rulesets):
+Applied as ruleset **[Protect master](https://github.com/anonwins/ssh-agent-gui/rules/21353954)** (active, default branch):
 
 - Require a pull request before merging
 - Require one approving review (dismiss stale reviews)
@@ -12,14 +12,13 @@ In Settings → Branches (or Rulesets):
 - Do not allow deletions
 - Require status checks to pass and the branch to be up to date: **`build-test`** (CI) and **`analyze`** (CodeQL)
 - Do **not** require **`analysis`** (Scorecard) or **Dependabot** as merge gates
-- Do **not** turn on “Include administrators” (`enforce_admins`) — a solo maintainer would be locked out of a direct `master` push
-- Optionally require conversation resolution
+- Repository admin is on the ruleset **bypass list** so a solo maintainer can still push `master`. Without that bypass, you cannot approve your own PRs and you cannot push `master`.
 
 Do not add CODEOWNERS just to raise a Scorecard number.
 
 ## Private vulnerability reporting
 
-Settings → Code security → Enable **Private vulnerability reporting** so [SECURITY.md](../SECURITY.md) can use GitHub Advisories.
+Enabled. [SECURITY.md](../SECURITY.md) uses GitHub Advisories.
 
 ## Code scanning
 
@@ -44,7 +43,7 @@ There is no `pull_request_target` workflow.
 
 ## Scorecard
 
-A low score is expected until branch protection is applied in Settings, a LICENSE exists (legal choice — not added here), and a signed release exists. Do not add CODEOWNERS or a badge just to raise the number.
+Token-Permissions is already a pass (job-level writes). A low overall score is still expected until a LICENSE exists (legal choice — not added here) and a signed release exists. Do not add CODEOWNERS or a badge just to raise the number.
 
 Accepted leftovers (not defects in this app):
 
@@ -52,7 +51,7 @@ Accepted leftovers (not defects in this app):
 - **Fuzzing** — out of scope
 - **Code-Review** — solo maintainer; requiring PRs helps, a second human would be needed to pass honestly
 - **CII-Best-Practices** — optional OpenSSF Best Practices badge
-- **Maintained** — activity/recency; improves as commits continue
-- **Branch-Protection** (Scorecard alert) — applying classic protection in Settings is the real control. On a public repo Scorecard often cannot *read* those settings with `GITHUB_TOKEN`. An optional `SCORECARD_TOKEN` PAT (`repo_token` on the Scorecard job) would let the check see them; do not add a PAT unless you want that alert gone.
+- **Maintained** — Scorecard treats repos younger than 90 days as unmaintained
+- **Branch-Protection** (Scorecard alert) — the **Protect master** ruleset is the real control. On a public repo Scorecard often cannot *read* rulesets/classic protection with `GITHUB_TOKEN` (it still says protection is off). An optional `SCORECARD_TOKEN` PAT (`repo_token` on the Scorecard job) would let the check see them; do not add a PAT unless you want that alert gone.
 
 Do not dismiss Scorecard alerts just to clear the Security tab.

@@ -10,7 +10,7 @@ After the first tagged release (`v*.*.*`), supported versions will be **the late
 
 Report security issues through [GitHub Security Advisories](https://github.com/anonwins/ssh-agent-gui/security/advisories/new) (private vulnerability reporting).
 
-There is no security contact email in this repository. If private reporting is not enabled yet, open a **minimal** public issue asking the maintainer to turn it on — do not include exploit details in the public issue.
+There is no security contact email in this repository. Private vulnerability reporting is enabled — do not file exploit details in a public issue.
 
 Please allow **7 days** for an initial response and **30 days** for a fix or a documented decision on `master`. Do not expect coordinated disclosure dates until tagged releases exist.
 
