@@ -1,14 +1,58 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
 namespace SshAgentGui.Ssh;
 
+internal sealed class PageantCallerInfo
+{
+    public const string UnknownName = "A program";
+
+    public string? Label { get; init; }
+    public int? Pid { get; init; }
+    public string? ProcessName { get; init; }
+    public string? ImagePath { get; init; }
+    public string? Description { get; init; }
+    public string? WindowTitle { get; init; }
+
+    public string DisplayName =>
+        FirstNonEmpty(Description, ProcessName, Label) ?? UnknownName;
+
+    public string? WindowSubtitle =>
+        string.IsNullOrWhiteSpace(WindowTitle)
+        || WindowTitle.Equals(DisplayName, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : WindowTitle;
+
+    public string? ProcessLine
+    {
+        get
+        {
+            var pidText = Pid is { } pid ? "(PID " + pid.ToString(CultureInfo.InvariantCulture) + ")" : null;
+            if (ProcessName is not null && pidText is not null)
+                return ProcessName + " " + pidText;
+            return ProcessName ?? pidText;
+        }
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return null;
+    }
+}
+
 internal static class PageantCaller
 {
     public const int MaxLabelLength = 80;
-    public const string UnknownPrompt = "A program wants to use a key from the agent.";
 
     public static string? Format(string? description, string? title, string? processName)
     {
@@ -29,17 +73,9 @@ internal static class PageantCaller
         return Truncate(label);
     }
 
-    public static string PromptLine(string? caller)
-    {
-        if (string.IsNullOrWhiteSpace(caller))
-            return UnknownPrompt;
-        var name = Truncate(caller.Trim());
-        return name is null ? UnknownPrompt : name + " wants to use a key from the agent.";
-    }
+    public static PageantCallerInfo? FromProcessId(int pid) => FromProcessId(pid, preferredTitle: null);
 
-    public static string? FromProcessId(int pid) => FromProcessId(pid, preferredTitle: null);
-
-    public static string? FromWindow(IntPtr hwnd)
+    public static PageantCallerInfo? FromWindow(IntPtr hwnd)
     {
         try
         {
@@ -48,7 +84,11 @@ internal static class PageantCaller
             var title = WindowTitle(hwnd);
             _ = GetWindowThreadProcessId(hwnd, out var pid);
             if (pid == 0)
-                return Format(null, title, null);
+            {
+                var label = Format(null, title, null);
+                return label is null ? null : new PageantCallerInfo { Label = label, WindowTitle = title };
+            }
+
             return FromProcessId(unchecked((int)pid), title);
         }
         catch
@@ -57,7 +97,7 @@ internal static class PageantCaller
         }
     }
 
-    public static string? FromPipe(SafePipeHandle handle)
+    public static PageantCallerInfo? FromPipe(SafePipeHandle handle)
     {
         try
         {
@@ -84,7 +124,7 @@ internal static class PageantCaller
         }
     }
 
-    public static string? FromPuttyMappingName(string? name)
+    public static PageantCallerInfo? FromPuttyMappingName(string? name)
     {
         if (name is null || !PageantMapping.TryGetPuttyRequestThreadId(name, out var threadId))
             return null;
@@ -113,24 +153,48 @@ internal static class PageantCaller
         }
     }
 
-    private static string? FromProcessId(int pid, string? preferredTitle)
+    private static PageantCallerInfo? FromProcessId(int pid, string? preferredTitle)
     {
+        if (pid <= 0)
+            return null;
+
+        var imagePath = TryGetImagePath(pid);
+        Process? process = null;
         try
         {
-            if (pid <= 0)
-                return null;
-            using var process = Process.GetProcessById(pid);
-            var description = TryFileDescription(process) ?? TryFileDescriptionFromImage(pid);
-            var title = Sanitize(preferredTitle) ?? FirstWindowTitle(process);
-            return Format(description, title, process.ProcessName);
+            process = Process.GetProcessById(pid);
         }
         catch
         {
-            return null;
+        }
+
+        try
+        {
+            imagePath ??= TryMainModulePath(process);
+            if (process is null && imagePath is null)
+                return null;
+
+            var description = TryFileDescription(process) ?? TryFileDescriptionFromPath(imagePath);
+            var title = Sanitize(preferredTitle) ?? (process is null ? null : FirstWindowTitle(process));
+            var processName = process is null ? null : StripExe(process.ProcessName);
+            var label = Format(description, title, processName);
+            return new PageantCallerInfo
+            {
+                Label = label,
+                Pid = pid,
+                ProcessName = processName,
+                ImagePath = imagePath,
+                Description = description,
+                WindowTitle = title,
+            };
+        }
+        finally
+        {
+            process?.Dispose();
         }
     }
 
-    private static string? FromPipeUsers(IntPtr handle)
+    private static PageantCallerInfo? FromPipeUsers(IntPtr handle)
     {
         var size = 8 + (IntPtr.Size * 16);
         var buffer = Marshal.AllocHGlobal(size);
@@ -165,7 +229,7 @@ internal static class PageantCaller
         }
     }
 
-    private static string? FromThreadSnapshot(uint threadId)
+    private static PageantCallerInfo? FromThreadSnapshot(uint threadId)
     {
         var snap = CreateToolhelp32Snapshot(0x4, 0);
         if (snap == IntPtr.Zero || snap == new IntPtr(-1))
@@ -189,21 +253,19 @@ internal static class PageantCaller
         }
     }
 
-    private static string? TryFileDescriptionFromImage(int pid)
+    private static string? TryGetImagePath(int pid)
     {
         var process = OpenProcess(0x1000, false, unchecked((uint)pid)); // PROCESS_QUERY_LIMITED_INFORMATION
         if (process == IntPtr.Zero)
             return null;
         try
         {
-            var buffer = new StringBuilder(512);
+            var buffer = new StringBuilder(32768);
             var capacity = (uint)buffer.Capacity;
             if (!QueryFullProcessImageName(process, 0, buffer, ref capacity))
                 return null;
             var path = buffer.ToString();
-            if (string.IsNullOrWhiteSpace(path))
-                return null;
-            return ShortProduct(FileVersionInfo.GetVersionInfo(path).FileDescription);
+            return string.IsNullOrWhiteSpace(path) ? null : path;
         }
         catch
         {
@@ -215,14 +277,45 @@ internal static class PageantCaller
         }
     }
 
-    private static string? TryFileDescription(Process process)
+    private static string? TryMainModulePath(Process? process)
     {
+        if (process is null)
+            return null;
+        try
+        {
+            var path = process.MainModule?.FileName;
+            return string.IsNullOrWhiteSpace(path) ? null : path;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryFileDescriptionFromPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return null;
+        try
+        {
+            return ShortProduct(FileVersionInfo.GetVersionInfo(path).FileDescription);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? TryFileDescription(Process? process)
+    {
+        if (process is null)
+            return null;
         try
         {
             var description = process.MainModule?.FileVersionInfo.FileDescription;
             return ShortProduct(description);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
         {
             return null;
         }

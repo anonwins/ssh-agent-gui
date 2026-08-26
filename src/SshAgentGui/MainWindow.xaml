@@ -184,17 +184,19 @@
                                             <TextBlock Style="{StaticResource GlyphSmall}" Text="&#xE74D;"/>
                                         </Button>
                                     </StackPanel>
-                                    <TextBlock Grid.Row="1"
-                                               Text="{Binding Fingerprint}"
-                                               ToolTip="{Binding Fingerprint}"
-                                               Cursor="Hand"
-                                               Foreground="{StaticResource MutedBrush}"
-                                               FontFamily="Cascadia Mono, Consolas"
-                                               FontSize="11"
-                                               VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               Margin="0,4,0,0"
-                                               MouseLeftButtonUp="OnFingerprintClick"/>
+                                    <local:PackLeftPanel Grid.Row="1" Margin="0,4,0,0">
+                                        <TextBlock local:PackLeftPanel.IsFill="True"
+                                                   Text="{Binding Fingerprint}"
+                                                   ToolTip="{Binding Fingerprint}"
+                                                   Cursor="Hand"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   FontFamily="Cascadia Mono, Consolas"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MouseLeftButtonUp="OnFingerprintClick"/>
+                                        <TextBlock Style="{StaticResource CopyCheck}"/>
+                                    </local:PackLeftPanel>
                                 </Grid>
                             </Border>
                         </DataTemplate>

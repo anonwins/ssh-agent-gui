@@ -221,11 +221,11 @@ public partial class MainWindow : Window
 
     private void OnFingerprintClick(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not FrameworkElement { DataContext: SshIdentity identity })
+        if (sender is not FrameworkElement { DataContext: SshIdentity identity } clicked)
             return;
 
-        System.Windows.Clipboard.SetText(identity.Fingerprint);
-        _session.SetStatus("Fingerprint copied");
+        if (CopyFeedback.TryCopy(identity.Fingerprint, CopyFeedback.FindMark(clicked)))
+            _session.SetStatus("Fingerprint copied");
     }
 
     private void OnOptionalFeaturesClick(object sender, RoutedEventArgs e)

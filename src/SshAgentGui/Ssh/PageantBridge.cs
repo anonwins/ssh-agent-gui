@@ -196,7 +196,7 @@ internal sealed class PageantBridge : IDisposable
         }
     }
 
-    private bool ConfirmOnUi(byte[] blob, string? caller)
+    private bool ConfirmOnUi(byte[] blob, PageantCallerInfo? caller)
     {
         if (_ui.CheckAccess())
             return _confirm(blob, caller);

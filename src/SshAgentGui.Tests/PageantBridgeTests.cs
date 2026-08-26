@@ -311,27 +311,60 @@ public sealed class PageantBridgeTests
         Assert.Equal("WinSCP", PageantCaller.Format("WinSCP", @"C:\Program Files\WinSCP\WinSCP.exe", "WinSCP"));
 
     [Fact]
-    public void Caller_prompt_unknown() =>
-        Assert.Equal(PageantCaller.UnknownPrompt, PageantCaller.PromptLine(null));
-
-    [Fact]
-    public void Caller_prompt_names_program() =>
-        Assert.Equal("WinSCP wants to use a key from the agent.", PageantCaller.PromptLine("WinSCP"));
-
-    [Fact]
-    public void Caller_prompt_keeps_formatted_label() =>
-        Assert.StartsWith("WinSCP — host.example/session", PageantCaller.PromptLine("WinSCP — host.example/session"));
-
-    [Fact]
     public void Caller_short_product_strips_marketing_suffix() =>
         Assert.Equal("WinSCP", PageantCaller.ShortProduct("WinSCP: SFTP, FTP, WebDAV, S3 and SCP client"));
+
+    [Fact]
+    public void Caller_display_name_prefers_description()
+    {
+        var info = new PageantCallerInfo
+        {
+            Description = "WinSCP",
+            ProcessName = "WinSCP",
+            Label = "WinSCP — host",
+        };
+        Assert.Equal("WinSCP", info.DisplayName);
+    }
+
+    [Fact]
+    public void Caller_display_name_unknown() =>
+        Assert.Equal(PageantCallerInfo.UnknownName, new PageantCallerInfo().DisplayName);
+
+    [Fact]
+    public void Caller_window_subtitle_omits_same_name()
+    {
+        var info = new PageantCallerInfo { Description = "WinSCP", WindowTitle = "WinSCP" };
+        Assert.Null(info.WindowSubtitle);
+    }
+
+    [Fact]
+    public void Caller_window_subtitle_keeps_session()
+    {
+        var info = new PageantCallerInfo { Description = "WinSCP", WindowTitle = "aella-vps1" };
+        Assert.Equal("aella-vps1", info.WindowSubtitle);
+    }
+
+    [Fact]
+    public void Caller_process_line_joins_name_and_pid()
+    {
+        var info = new PageantCallerInfo { ProcessName = "WinSCP", Pid = 14280 };
+        Assert.Equal("WinSCP (PID 14280)", info.ProcessLine);
+    }
+
+    [Fact]
+    public void Caller_process_line_pid_only() =>
+        Assert.Equal("(PID 1560)", new PageantCallerInfo { Pid = 1560 }.ProcessLine);
+
+    [Fact]
+    public void Caller_process_line_name_only() =>
+        Assert.Equal("WinSCP", new PageantCallerInfo { ProcessName = "WinSCP" }.ProcessLine);
 
     [Fact]
     public void Caller_from_putty_mapping_of_this_thread()
     {
         var name = $"PageantRequest{GetCurrentThreadId():x8}";
-        var label = PageantCaller.FromPuttyMappingName(name);
-        Assert.False(string.IsNullOrWhiteSpace(label));
+        var info = PageantCaller.FromPuttyMappingName(name);
+        Assert.False(string.IsNullOrWhiteSpace(info?.Label));
     }
 
     [Fact]
@@ -348,8 +381,9 @@ public sealed class PageantBridgeTests
         var accepted = server.WaitForConnectionAsync();
         await client.ConnectAsync(2000);
         await accepted;
-        var label = PageantCaller.FromPipe(server.SafePipeHandle);
-        Assert.False(string.IsNullOrWhiteSpace(label));
+        var info = PageantCaller.FromPipe(server.SafePipeHandle);
+        Assert.False(string.IsNullOrWhiteSpace(info?.Label));
+        Assert.Equal(Environment.ProcessId, info?.Pid);
     }
 
     [Fact]
@@ -360,24 +394,28 @@ public sealed class PageantBridgeTests
     }
 
     [Fact]
-    public void Caller_from_current_process_is_non_empty()
+    public void Caller_from_current_process_has_pid_and_path()
     {
-        var label = PageantCaller.FromProcessId(Environment.ProcessId);
-        Assert.False(string.IsNullOrWhiteSpace(label));
+        var info = PageantCaller.FromProcessId(Environment.ProcessId);
+        Assert.NotNull(info);
+        Assert.Equal(Environment.ProcessId, info.Pid);
+        Assert.False(string.IsNullOrWhiteSpace(info.Label));
+        Assert.False(string.IsNullOrWhiteSpace(info.ImagePath));
+        Assert.True(File.Exists(info.ImagePath));
     }
 
     [Fact]
     public void Sign_confirm_receives_caller()
     {
-        string? seen = "unset";
+        PageantCallerInfo? seen = null;
         var frame = SignFrame(Encoding.ASCII.GetBytes("blob"), "data");
         var pipe = new RecordingPipe { Reply = SshAgentFrame.Prefix(14, [1]) };
         PageantDispatch.Handle(frame, pipe, (_, caller) =>
         {
             seen = caller;
             return true;
-        }, "WinSCP");
-        Assert.Equal("WinSCP", seen);
+        }, new PageantCallerInfo { Label = "WinSCP" });
+        Assert.Equal("WinSCP", seen?.Label);
     }
 
     [Fact]
